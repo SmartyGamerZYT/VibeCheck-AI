@@ -60,6 +60,8 @@ export const ReviewEngine: React.FC<ReviewEngineProps> = ({
     setSuccessToast(null);
 
     try {
+      const savedKey = typeof window !== 'undefined' ? localStorage.getItem('vibecheck_openrouter_key') : null;
+
       const res = await fetch('/api/review', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -68,6 +70,7 @@ export const ReviewEngine: React.FC<ReviewEngineProps> = ({
           guidelines,
           format,
           channel,
+          apiKey: savedKey || undefined,
         }),
       });
 

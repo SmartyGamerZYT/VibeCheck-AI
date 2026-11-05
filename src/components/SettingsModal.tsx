@@ -34,6 +34,22 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     }
   };
 
+  const [apiKeyInput, setApiKeyInput] = useState<string>(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('vibecheck_openrouter_key') || '';
+    }
+    return '';
+  });
+  const [keySaved, setKeySaved] = useState(false);
+
+  const handleSaveApiKey = () => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('vibecheck_openrouter_key', apiKeyInput.trim());
+      setKeySaved(true);
+      setTimeout(() => setKeySaved(false), 2000);
+    }
+  };
+
   const isAdmin = currentUser.role === 'admin';
 
   return (
@@ -104,6 +120,39 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             </div>
           </div>
         )}
+
+        {/* API KEY CONFIGURATION SECTION */}
+        <div className="p-4 rounded-xl bg-sand-50 border border-sand-300 space-y-2.5">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-bold uppercase tracking-wider text-sand-800 flex items-center gap-1.5">
+              <Shield className="h-4 w-4 text-sand-700" />
+              OpenRouter AI Key (Optional)
+            </span>
+            {keySaved && (
+              <span className="text-[10px] text-emerald-800 font-bold bg-emerald-100 px-2 py-0.5 rounded">
+                Saved!
+              </span>
+            )}
+          </div>
+          <p className="text-[11px] text-sand-600">
+            Paste your personal OpenRouter API key to route reviews directly through live external LLMs. If empty, the built-in multi-factor NLP & grammar engine is used.
+          </p>
+          <div className="flex gap-2">
+            <input
+              type="password"
+              value={apiKeyInput}
+              onChange={(e) => setApiKeyInput(e.target.value)}
+              placeholder="sk-or-v1-..."
+              className="flex-1 text-xs p-2 rounded-lg border border-sand-300 bg-white font-mono"
+            />
+            <button
+              onClick={handleSaveApiKey}
+              className="px-3 py-2 rounded-lg bg-sand-900 text-sand-50 text-xs font-semibold hover:bg-sand-800"
+            >
+              Save Key
+            </button>
+          </div>
+        </div>
 
         {/* TEAM MEMBERS LIST */}
         <div className="space-y-3">
