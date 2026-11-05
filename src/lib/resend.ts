@@ -9,7 +9,7 @@ export interface EmailPayload {
 }
 
 export async function sendWorkflowNotification(payload: EmailPayload) {
-  const apiKey = process.env.RESEND_API_KEY || 're_cfqCsDnC_5pVrpCkfWL9pSuWH9SNFX2xi';
+  const apiKey = process.env.RESEND_API_KEY || '';
 
   const htmlContent = `
     <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #FAF8F5; padding: 40px 20px; color: #231B10;">

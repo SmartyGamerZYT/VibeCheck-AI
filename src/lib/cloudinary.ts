@@ -25,8 +25,8 @@ export async function uploadAssetToCloudinary(
   fileName: string,
   folder: string = 'vibecheck_brand_assets'
 ): Promise<CloudinaryUploadResponse> {
-  const cloudName = process.env.CLOUDINARY_CLOUD_NAME || 'xngyfpka';
-  const apiKey = process.env.CLOUDINARY_API_KEY || '322842443257289';
+  const cloudName = process.env.CLOUDINARY_CLOUD_NAME || '';
+  const apiKey = process.env.CLOUDINARY_API_KEY || '';
 
   // For client/server uploads
   const formData = new FormData();

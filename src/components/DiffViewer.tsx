@@ -2,7 +2,7 @@
 
 import React from 'react';
 import { ComplianceIssue } from '@/lib/types';
-import { Check, X, Edit3, ArrowRight } from 'lucide-react';
+import { Check, X, ShieldAlert, SpellCheck, AlertTriangle } from 'lucide-react';
 
 interface DiffViewerProps {
   originalText: string;
@@ -19,8 +19,28 @@ export const DiffViewer: React.FC<DiffViewerProps> = ({
   issues,
   onAcceptIssue,
   onRejectIssue,
-  onModifyIssue,
 }) => {
+  const getCategoryBadge = (cat: string) => {
+    switch (cat) {
+      case 'safety':
+        return 'bg-rose-100 text-rose-900 border-rose-300';
+      case 'spelling':
+        return 'bg-amber-100 text-amber-900 border-amber-300';
+      case 'grammar':
+        return 'bg-orange-100 text-orange-900 border-orange-300';
+      case 'terminology':
+        return 'bg-blue-100 text-blue-900 border-blue-300';
+      case 'claims':
+        return 'bg-red-100 text-red-900 border-red-300';
+      case 'competitor':
+        return 'bg-purple-100 text-purple-900 border-purple-300';
+      case 'tone':
+        return 'bg-stone-200 text-stone-900 border-stone-300';
+      default:
+        return 'bg-sand-200 text-sand-800 border-sand-300';
+    }
+  };
+
   return (
     <div className="space-y-4">
       {/* Side by Side Preview Panels */}
@@ -36,7 +56,7 @@ export const DiffViewer: React.FC<DiffViewerProps> = ({
               {originalText.length} chars
             </span>
           </div>
-          <div className="p-4 text-xs font-normal leading-relaxed text-sand-800 whitespace-pre-wrap min-h-[160px] max-h-[360px] overflow-y-auto">
+          <div className="p-4 text-xs font-normal leading-relaxed text-sand-800 whitespace-pre-wrap min-h-[140px] max-h-[300px] overflow-y-auto">
             {originalText}
           </div>
         </div>
@@ -46,39 +66,39 @@ export const DiffViewer: React.FC<DiffViewerProps> = ({
           <div className="px-4 py-2.5 border-b border-sand-200 bg-sand-50/80 rounded-t-xl flex items-center justify-between">
             <span className="text-xs font-bold text-emerald-800 uppercase tracking-wider flex items-center gap-1.5">
               <span className="h-2 w-2 rounded-full bg-emerald-500" />
-              Compliant Recommended Rewrite
+              Corrected & Compliant Rewrite
             </span>
             <span className="text-[11px] text-emerald-700 font-semibold bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
-              Preserves Intent • 100% On-Brand
+              Grammar Fixed • On-Brand
             </span>
           </div>
-          <div className="p-4 text-xs font-normal leading-relaxed text-sand-900 bg-emerald-50/20 whitespace-pre-wrap min-h-[160px] max-h-[360px] overflow-y-auto">
-            {suggestedText || 'Run AI Review to generate full compliant rewrite.'}
+          <div className="p-4 text-xs font-normal leading-relaxed text-sand-900 bg-emerald-50/20 whitespace-pre-wrap min-h-[140px] max-h-[300px] overflow-y-auto">
+            {suggestedText || 'Run AI Review to generate corrected rewrite.'}
           </div>
         </div>
       </div>
 
-      {/* Flagged Item Granular Decision Cards */}
+      {/* Flagged Issues List */}
       <div className="space-y-2.5 mt-4">
         <div className="flex items-center justify-between">
           <h4 className="text-xs font-bold uppercase tracking-wider text-sand-700">
-            Detected Brand Violations ({issues.length})
+            Identified Issues & Suggestions ({issues.length})
           </h4>
           <span className="text-[11px] text-sand-500">
-            Review and resolve each item individually
+            Accept or reject corrections individually
           </span>
         </div>
 
         {issues.length === 0 ? (
           <div className="p-6 text-center bg-white rounded-xl border border-sand-200 text-sand-500 text-xs">
-            No brand compliance issues detected in this piece!
+            No spelling errors, grammar mistakes, sexual content, or brand guideline violations detected!
           </div>
         ) : (
           issues.map((issue) => {
             const severityColors = {
-              critical: 'border-l-4 border-l-rose-500 bg-rose-50/30 border-rose-200',
-              warning: 'border-l-4 border-l-amber-500 bg-amber-50/30 border-amber-200',
-              suggestion: 'border-l-4 border-l-sky-500 bg-sky-50/30 border-sky-200',
+              critical: 'border-l-4 border-l-rose-500 bg-rose-50/20 border-rose-200',
+              warning: 'border-l-4 border-l-amber-500 bg-amber-50/20 border-amber-200',
+              suggestion: 'border-l-4 border-l-sky-500 bg-sky-50/20 border-sky-200',
             }[issue.severity];
 
             const severityBadge = {
@@ -100,28 +120,30 @@ export const DiffViewer: React.FC<DiffViewerProps> = ({
                       >
                         {issue.severity}
                       </span>
+                      <span
+                        className={`text-[10px] uppercase font-bold px-2 py-0.5 rounded border ${getCategoryBadge(
+                          issue.category
+                        )}`}
+                      >
+                        {issue.category}
+                      </span>
                       <span className="text-[10px] font-mono px-2 py-0.5 bg-sand-100 text-sand-700 rounded border border-sand-200">
                         {issue.guidelineRef}
-                      </span>
-                      <span className="text-[11px] uppercase font-bold text-sand-500 tracking-wider">
-                        Category: {issue.category}
                       </span>
                       {issue.status !== 'pending' && (
                         <span
                           className={`text-[10px] font-bold px-2 py-0.5 rounded ${
                             issue.status === 'accepted'
                               ? 'bg-emerald-100 text-emerald-800'
-                              : issue.status === 'rejected'
-                              ? 'bg-stone-200 text-stone-700'
-                              : 'bg-purple-100 text-purple-800'
+                              : 'bg-stone-200 text-stone-700'
                           }`}
                         >
-                          Status: {issue.status}
+                          {issue.status}
                         </span>
                       )}
                     </div>
 
-                    {/* Side-by-side diff snippet */}
+                    {/* Original vs Suggestion */}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mt-2 pt-1">
                       <div className="p-2 rounded bg-rose-50 border border-rose-200 text-xs">
                         <span className="text-[10px] font-bold text-rose-700 block mb-0.5 uppercase">
@@ -146,7 +168,7 @@ export const DiffViewer: React.FC<DiffViewerProps> = ({
                     </p>
                   </div>
 
-                  {/* Action Buttons */}
+                  {/* Accept / Reject Buttons */}
                   <div className="flex flex-col sm:flex-row items-center gap-1.5 shrink-0 self-center">
                     <button
                       onClick={() => onAcceptIssue(issue.id)}
@@ -180,4 +202,3 @@ export const DiffViewer: React.FC<DiffViewerProps> = ({
     </div>
   );
 };
-

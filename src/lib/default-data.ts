@@ -151,6 +151,22 @@ export const DEFAULT_BRAND_GUIDELINES: BrandGuidelineConfig = {
   competitorLockout: ['OmniCare Health', 'CureAll Bio', 'Panacea Labs'],
   rules: [
     {
+      id: 'rule_safety_01',
+      ruleCode: 'SAFE-01',
+      title: 'Prohibit Sexual, Adult & Explicit Content',
+      description: 'Brand safety guidelines strictly prohibit any sexual innuendo, adult terminology, explicit language, or NSFW content.',
+      category: 'safety',
+      severity: 'critical',
+    },
+    {
+      id: 'rule_lang_01',
+      ruleCode: 'LANG-01',
+      title: 'Editorial Grammar & Orthography Standard',
+      description: 'All published materials must be free of grammatical mistakes, spelling errors, and typographical oversights.',
+      category: 'grammar',
+      severity: 'warning',
+    },
+    {
       id: 'rule_1',
       ruleCode: 'TONE-01',
       title: 'Maintain Empathetic Gravitas',

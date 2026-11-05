@@ -22,7 +22,16 @@ export interface UserAccount {
 }
 
 export type IssueSeverity = 'critical' | 'warning' | 'suggestion';
-export type IssueCategory = 'tone' | 'terminology' | 'claims' | 'visual' | 'accessibility' | 'competitor';
+export type IssueCategory =
+  | 'tone'
+  | 'terminology'
+  | 'claims'
+  | 'visual'
+  | 'accessibility'
+  | 'competitor'
+  | 'grammar'
+  | 'spelling'
+  | 'safety';
 
 export interface ComplianceIssue {
   id: string;
@@ -44,6 +53,7 @@ export interface ReviewResult {
   claimsScore: number;
   visualScore: number;
   accessibilityScore: number;
+  grammarScore?: number;
   aiDisclosure: string;
   summary: string;
   issues: ComplianceIssue[];

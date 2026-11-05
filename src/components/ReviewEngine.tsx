@@ -73,16 +73,11 @@ export const ReviewEngine: React.FC<ReviewEngineProps> = ({
 
       const data = await res.json();
       if (data.result) {
-        const readability = calculateReadability(text);
-        const enrichedResult: ReviewResult = {
-          ...data.result,
-          accessibilityScore: Math.min(100, Math.round(readability.score * 0.9 + 10)),
-        };
-        setReviewResult(enrichedResult);
+        setReviewResult(data.result);
 
         onLogAudit(
           'AI Content Audit',
-          `Scanned "${title}" - Score: ${enrichedResult.overallScore}% (${enrichedResult.issues.length} flags).`,
+          `Scanned "${title}" - Score: ${data.result.overallScore}% (${data.result.issues.length} flags).`,
           'review'
         );
       }
@@ -474,6 +469,21 @@ export const ReviewEngine: React.FC<ReviewEngineProps> = ({
                       <div className="h-full bg-amber-600 rounded-full" style={{ width: `${reviewResult.terminologyScore}%` }} />
                     </div>
                   </div>
+
+                  {reviewResult.grammarScore !== undefined && (
+                    <div>
+                      <div className="flex justify-between text-sand-700 font-medium mb-1">
+                        <span>Spelling & Grammar</span>
+                        <span className="font-bold">{reviewResult.grammarScore}%</span>
+                      </div>
+                      <div className="h-1.5 w-full bg-sand-100 rounded-full overflow-hidden">
+                        <div
+                          className="h-full bg-orange-500 rounded-full transition-all duration-500"
+                          style={{ width: `${reviewResult.grammarScore}%` }}
+                        />
+                      </div>
+                    </div>
+                  )}
 
                   <div>
                     <div className="flex justify-between text-sand-700 font-medium mb-1">
