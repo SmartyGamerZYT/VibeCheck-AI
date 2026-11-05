@@ -1,0 +1,20 @@
+Problem Statement by Inkloom AI
+Growing organisations publish content through multiple employees, agencies and AI tools, making it difficult to maintain a consistent and trustworthy brand identity.
+Incorrect claims, outdated information, inconsistent language and off-brand visuals can damage credibility before anyone notices the problem.
+Build an intelligent brand-governance platform that reviews content before publication and checks it against approved guidelines, facts and assets.
+The system should detect issues involving tone, terminology, messaging, visual consistency, accessibility and unsupported promotional claims.
+Instead of simply rejecting content, it should explain each issue and suggest corrections that preserve the creator's original purpose.
+Include a review and approval workflow through which creators, managers and authorised reviewers can collaborate and track changes.
+The product should support different content formats and provide insights into repeated mistakes or areas where the brand guidelines are unclear.
+The final solution must balance automation with human control while protecting confidential materials and producing reliable, explainable results.
+Expected Outcome
+Teams should produce a functional product that helps an organisation prevent brand inconsistency before content is published. The solution should use approved source material, provide understandable findings, support human review and demonstrate value across realistic content workflows.
+Suggested Product Capabilities
+Import or define brand guidelines, approved facts, terminology and reusable assets.
+Review text, images, documents or other supported content formats before publication.
+Detect inconsistent tone, language, facts, claims, visual usage and accessibility issues.
+Explain why an issue was flagged and identify the guideline or approved source involved.
+Suggest corrections without automatically overriding important human decisions.
+Support comments, approvals, revision history and role-based review workflows.
+Identify recurring problems and provide useful governance insights over time.
+Protect confidential brand materials and clearly disclose the use of AI or external services.
