@@ -18,6 +18,7 @@ export interface UserAccount {
   orgId: string;
   orgName: string;
   department?: string;
+  avatar?: string;
   createdAt: string;
 }
 
@@ -31,7 +32,25 @@ export type IssueCategory =
   | 'competitor'
   | 'grammar'
   | 'spelling'
-  | 'safety';
+  | 'safety'
+  | 'copyright';
+
+export interface ImageAnalysisResult {
+  extractedText: string;
+  paletteScore: number;
+  dominantHexes: string[];
+  contrastRatio: number;
+  isInappropriate: boolean;
+  inappropriateExplanation?: string;
+  copyrightRiskLevel: 'low' | 'medium' | 'high';
+  copyrightExplanation?: string;
+  watermarksDetected: string[];
+  recommendations: string[];
+  skinToneCoverage?: number;
+  brightness?: number;
+  isBlurry?: boolean;
+  cvQualityScore?: number;
+}
 
 export interface ComplianceIssue {
   id: string;
@@ -54,6 +73,8 @@ export interface ReviewResult {
   visualScore: number;
   accessibilityScore: number;
   grammarScore?: number;
+  copyrightScore?: number;
+  imageAnalysis?: ImageAnalysisResult;
   aiDisclosure: string;
   summary: string;
   issues: ComplianceIssue[];

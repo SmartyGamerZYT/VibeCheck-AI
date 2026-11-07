@@ -36,6 +36,8 @@ export const DiffViewer: React.FC<DiffViewerProps> = ({
         return 'bg-purple-100 text-purple-900 border-purple-300';
       case 'tone':
         return 'bg-stone-200 text-stone-900 border-stone-300';
+      case 'copyright':
+        return 'bg-purple-100 text-purple-900 border-purple-300';
       default:
         return 'bg-sand-200 text-sand-800 border-sand-300';
     }
@@ -68,9 +70,6 @@ export const DiffViewer: React.FC<DiffViewerProps> = ({
               <span className="h-2 w-2 rounded-full bg-emerald-500" />
               Corrected & Compliant Rewrite
             </span>
-            <span className="text-[11px] text-emerald-700 font-semibold bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
-              Grammar Fixed • On-Brand
-            </span>
           </div>
           <div className="p-4 text-xs font-normal leading-relaxed text-sand-900 bg-emerald-50/20 whitespace-pre-wrap min-h-[140px] max-h-[300px] overflow-y-auto">
             {suggestedText || 'Run AI Review to generate corrected rewrite.'}
@@ -84,9 +83,6 @@ export const DiffViewer: React.FC<DiffViewerProps> = ({
           <h4 className="text-xs font-bold uppercase tracking-wider text-sand-700">
             Identified Issues & Suggestions ({issues.length})
           </h4>
-          <span className="text-[11px] text-sand-500">
-            Accept or reject corrections individually
-          </span>
         </div>
 
         {issues.length === 0 ? (

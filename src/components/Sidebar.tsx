@@ -10,6 +10,7 @@ import {
   BarChart3,
   ShieldAlert,
   Users,
+  X,
 } from 'lucide-react';
 import { UserRole } from '@/lib/types';
 
@@ -29,6 +30,8 @@ interface SidebarProps {
   pendingQueueCount: number;
   userRole: UserRole;
   orgName: string;
+  isMobileOpen?: boolean;
+  onCloseMobile?: () => void;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -37,6 +40,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
   pendingQueueCount,
   userRole,
   orgName,
+  isMobileOpen = false,
+  onCloseMobile,
 }) => {
   // Define items tailored to each role
   const getNavItems = () => {
@@ -96,13 +101,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
         ...common,
         {
           id: 'queue' as NavTab,
-          label: 'Sign-Off Queue',
+          label: 'Team Approval Queue',
           icon: ListTodo,
           badge: pendingQueueCount > 0 ? pendingQueueCount : null,
         },
         {
           id: 'review' as NavTab,
-          label: 'Content Reviewer',
+          label: 'Draft & AI Review',
           icon: Sparkles,
           badge: null,
         },
@@ -113,8 +118,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
           badge: null,
         },
         {
+          id: 'assets' as NavTab,
+          label: 'Brand Assets',
+          icon: FolderGit2,
+          badge: null,
+        },
+        {
           id: 'analytics' as NavTab,
-          label: 'Team Insights',
+          label: 'Compliance Analytics',
           icon: BarChart3,
           badge: null,
         },
@@ -132,20 +143,26 @@ export const Sidebar: React.FC<SidebarProps> = ({
         },
         {
           id: 'review' as NavTab,
-          label: 'AI Content Scan',
+          label: 'Scan & Audit Draft',
           icon: Sparkles,
           badge: null,
         },
         {
           id: 'guidelines' as NavTab,
-          label: 'Brand Guidelines',
+          label: 'Brand Rules Reference',
           icon: BookOpenCheck,
+          badge: null,
+        },
+        {
+          id: 'assets' as NavTab,
+          label: 'Approved Assets',
+          icon: FolderGit2,
           badge: null,
         },
       ];
     }
 
-    // Default Creator
+    // Default: Creator
     return [
       ...common,
       {
@@ -177,12 +194,28 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
   const navItems = getNavItems();
 
-  return (
-    <aside className="w-56 border-r border-sand-200 bg-[#FAF8F5] flex flex-col justify-between p-3.5 shrink-0">
+  const handleSelect = (tab: NavTab) => {
+    onSelectTab(tab);
+    if (onCloseMobile) onCloseMobile();
+  };
+
+  const content = (
+    <div className="flex flex-col justify-between h-full p-3.5">
       <div className="space-y-4">
-        <div className="px-2.5 text-[10px] font-bold uppercase tracking-wider text-sand-500">
-          Navigation
+        <div className="flex items-center justify-between px-2.5">
+          <span className="text-[10px] font-bold uppercase tracking-wider text-sand-500">
+            Navigation
+          </span>
+          {onCloseMobile && (
+            <button
+              onClick={onCloseMobile}
+              className="md:hidden p-1 text-sand-500 hover:text-sand-900 rounded"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          )}
         </div>
+
         <nav className="space-y-1">
           {navItems.map((item) => {
             const Icon = item.icon;
@@ -190,7 +223,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             return (
               <button
                 key={item.id}
-                onClick={() => onSelectTab(item.id)}
+                onClick={() => handleSelect(item.id)}
                 className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-left transition-all ${
                   isActive
                     ? 'bg-sand-900 text-sand-50 shadow-xs'
@@ -200,7 +233,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 <div className="flex items-center space-x-2.5">
                   <Icon
                     className={`h-4 w-4 ${
-                      isActive ? 'text-sand-300' : 'text-sand-600'
+                      isActive ? 'text-amber-200' : 'text-sand-600'
                     }`}
                   />
                   <span className="text-xs font-semibold">{item.label}</span>
@@ -231,6 +264,28 @@ export const Sidebar: React.FC<SidebarProps> = ({
           {userRole}
         </div>
       </div>
-    </aside>
+    </div>
+  );
+
+  return (
+    <>
+      {/* Desktop Sidebar */}
+      <aside className="hidden md:flex w-56 border-r border-sand-200 bg-[#FAF8F5] shrink-0">
+        {content}
+      </aside>
+
+      {/* Mobile Drawer */}
+      {isMobileOpen && (
+        <div className="fixed inset-0 z-50 md:hidden flex">
+          <div
+            className="fixed inset-0 bg-sand-950/40 backdrop-blur-xs"
+            onClick={onCloseMobile}
+          />
+          <aside className="relative z-10 w-64 max-w-[80vw] h-full bg-[#FAF8F5] border-r border-sand-300 shadow-modal">
+            {content}
+          </aside>
+        </div>
+      )}
+    </>
   );
 };

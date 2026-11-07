@@ -9,6 +9,7 @@ interface AuthScreenProps {
   accounts: UserAccount[];
   onLogin: (account: UserAccount) => void;
   onRegister: (account: UserAccount, newOrg?: Organization) => void;
+  onBackToLanding?: () => void;
 }
 
 export const AuthScreen: React.FC<AuthScreenProps> = ({
@@ -16,6 +17,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
   accounts,
   onLogin,
   onRegister,
+  onBackToLanding,
 }) => {
   const [isRegistering, setIsRegistering] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -145,6 +147,15 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
 
       {/* Main Card */}
       <div className="w-full max-w-md bg-white rounded-2xl border border-sand-300 shadow-card p-6 md:p-8">
+        {onBackToLanding && (
+          <button
+            onClick={onBackToLanding}
+            className="mb-4 text-xs font-semibold text-sand-500 hover:text-sand-900 flex items-center gap-1.5 transition-colors"
+          >
+            ← Back to Home
+          </button>
+        )}
+
         {/* Toggle Login / Register */}
         <div className="flex border-b border-sand-200 mb-6 pb-2">
           <button

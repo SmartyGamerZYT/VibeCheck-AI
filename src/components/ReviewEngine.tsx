@@ -18,8 +18,13 @@ import {
   CheckCircle,
   Clock,
   RefreshCw,
+  AlertTriangle,
+  ShieldAlert,
+  ShieldCheck,
+  FileSearch,
 } from 'lucide-react';
-import { calculateReadability, calculateContrastRatio } from '@/lib/accessibility-cv';
+import { calculateReadability, calculateContrastRatio, extractRealPaletteFromImage, performFullCanvasComputerVisionAudit } from '@/lib/accessibility-cv';
+import { DocumentEditor } from './DocumentEditor';
 
 interface ReviewEngineProps {
   guidelines: BrandGuidelineConfig;
@@ -120,23 +125,146 @@ export const ReviewEngine: React.FC<ReviewEngineProps> = ({
     }
   };
 
-  // Handle Image upload for CV color check
+  // Handle Image upload for Real Dynamic CV Palette, Copyright, and Inappropriate Content Check
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+
+    setTitle(file.name.replace(/\.[^/.]+$/, ''));
+    setFormat('image');
 
     const reader = new FileReader();
     reader.onload = () => {
       const base64 = reader.result as string;
       setSelectedImage(base64);
-      setFormat('image');
 
-      const contrast = calculateContrastRatio('#231B10', '#FAF8F5');
-      setImageAnalysis({
-        paletteScore: 92,
-        contrastRatio: contrast,
-        dominantHexes: ['#FAF8F5', '#9C8561', '#231B10', '#D8CCB5'],
-      });
+      // Create an image element to perform real canvas pixel extraction
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.onload = async () => {
+        // Real dynamic canvas Computer Vision extraction - NOT hardcoded!
+        const approvedHexes = guidelines.colorPalette.map((c) => c.hex);
+        const cvAudit = performFullCanvasComputerVisionAudit(img, approvedHexes);
+
+        setImageAnalysis({
+          paletteScore: cvAudit.paletteScore,
+          contrastRatio: cvAudit.contrastRatio,
+          dominantHexes: cvAudit.dominantHexes,
+          isInappropriate: cvAudit.isInappropriate,
+          inappropriateExplanation: cvAudit.inappropriateExplanation,
+          copyrightRiskLevel: cvAudit.copyrightRiskLevel,
+          copyrightScore: cvAudit.copyrightScore,
+          watermarksDetected: cvAudit.watermarksDetected,
+          extractedText: '',
+          skinToneCoverage: cvAudit.skinToneCoverage,
+          brightness: cvAudit.brightness,
+          aspectRatio: cvAudit.aspectRatio,
+          isScanning: true,
+        });
+
+        try {
+          const savedKey = typeof window !== 'undefined' ? localStorage.getItem('vibecheck_openrouter_key') : null;
+          const res = await fetch('/api/review-image', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              imageBase64: base64,
+              guidelines,
+              apiKey: savedKey || undefined,
+            }),
+          });
+
+          const json = await res.json();
+          if (json.result) {
+            const r = json.result;
+            setImageAnalysis({
+              paletteScore: cvAudit.paletteScore,
+              contrastRatio: cvAudit.contrastRatio,
+              dominantHexes: cvAudit.dominantHexes,
+              extractedText: r.extractedText || '',
+              isInappropriate: !!r.isInappropriate || cvAudit.isInappropriate,
+              inappropriateExplanation: r.inappropriateExplanation || cvAudit.inappropriateExplanation,
+              copyrightRiskLevel: r.copyrightRiskLevel || cvAudit.copyrightRiskLevel,
+              copyrightScore: r.copyrightScore || cvAudit.copyrightScore,
+              copyrightExplanation: r.copyrightExplanation || cvAudit.copyrightExplanation,
+              watermarksDetected: r.watermarksDetected || cvAudit.watermarksDetected,
+              recommendations: r.recommendations || cvAudit.recommendations,
+              skinToneCoverage: cvAudit.skinToneCoverage,
+              brightness: cvAudit.brightness,
+              aspectRatio: cvAudit.aspectRatio,
+              isScanning: false,
+            });
+
+            // If OCR extracted text from image, populate into text editor and audit it
+            if (r.extractedText && r.extractedText.trim().length > 0) {
+              const ocrText = r.extractedText.trim();
+              setText(ocrText);
+              setSuccessToast(`Extracted ${ocrText.length} characters of text from image. Auditing against guidelines...`);
+
+              // Auto-audit extracted text
+              const reviewRes = await fetch('/api/review', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  content: ocrText,
+                  guidelines,
+                  format: 'image',
+                  channel,
+                  apiKey: savedKey || undefined,
+                }),
+              });
+              const reviewData = await reviewRes.json();
+              if (reviewData.result) {
+                const combinedIssues = [...(reviewData.result.issues || []), ...(r.issues || [])];
+                setReviewResult({
+                  ...reviewData.result,
+                  visualScore: cvAudit.paletteScore,
+                  copyrightScore: r.copyrightScore || reviewData.result.copyrightScore || cvAudit.copyrightScore,
+                  issues: combinedIssues,
+                  overallScore: Math.min(
+                    reviewData.result.overallScore,
+                    r.isInappropriate || cvAudit.isInappropriate ? 15 : r.copyrightRiskLevel === 'high' ? 40 : 85
+                  ),
+                });
+              }
+            } else if (r.issues && r.issues.length > 0) {
+              setReviewResult((prev) => {
+                const baseIssues = prev?.issues || [];
+                return {
+                  overallScore: Math.min(prev?.overallScore || 85, r.isInappropriate || cvAudit.isInappropriate ? 15 : 45),
+                  toneScore: prev?.toneScore || 90,
+                  terminologyScore: prev?.terminologyScore || 95,
+                  claimsScore: prev?.claimsScore || 95,
+                  visualScore: cvAudit.paletteScore,
+                  accessibilityScore: prev?.accessibilityScore || 85,
+                  grammarScore: prev?.grammarScore || 95,
+                  copyrightScore: r.copyrightScore || cvAudit.copyrightScore,
+                  aiDisclosure: 'Visual & Copyright Audit via VibeCheck Vision Engine.',
+                  summary: r.isInappropriate || cvAudit.isInappropriate
+                    ? 'CRITICAL: Inappropriate content/figure flagged in image.'
+                    : `Image scanned: ${cvAudit.paletteScore}% palette match with potential copyright/watermark risks.`,
+                  issues: [...baseIssues, ...r.issues],
+                  analyzedAt: new Date().toISOString(),
+                };
+              });
+            } else {
+              // Update visual and palette score on existing or default scorecard
+              setReviewResult((prev) => {
+                if (!prev) return null;
+                return {
+                  ...prev,
+                  visualScore: cvAudit.paletteScore,
+                  copyrightScore: r.copyrightScore || cvAudit.copyrightScore,
+                };
+              });
+            }
+          }
+        } catch (err) {
+          console.error('Image AI analysis error:', err);
+          setImageAnalysis((prev: any) => ({ ...prev, isScanning: false }));
+        }
+      };
+      img.src = base64;
     };
     reader.readAsDataURL(file);
   };
@@ -349,38 +477,156 @@ export const ReviewEngine: React.FC<ReviewEngineProps> = ({
               </div>
             </div>
 
-            {/* Text Area */}
-            <div className="space-y-1">
-              <div className="flex items-center justify-between">
-                <label className="text-[11px] font-bold uppercase tracking-wider text-sand-600 flex items-center gap-1.5">
-                  <FileText className="h-3.5 w-3.5 text-sand-500" />
-                  Draft Content
-                </label>
-                <span className="text-[10px] text-sand-400 font-mono">
-                  {text.trim().split(/\s+/).filter(Boolean).length} words
-                </span>
-              </div>
-              <textarea
+            {/* Document Editor with Rich Formatting */}
+            <div className="space-y-1.5">
+              <label className="text-[11px] font-bold uppercase tracking-wider text-sand-600 flex items-center gap-1.5">
+                <FileText className="h-3.5 w-3.5 text-sand-500" />
+                Draft Content & Document Editor
+              </label>
+              <DocumentEditor
                 value={text}
-                onChange={(e) => setText(e.target.value)}
-                rows={6}
-                className="w-full text-xs leading-relaxed text-sand-900 bg-sand-50/30 border border-sand-200 rounded-xl p-3.5 focus:ring-2 focus:ring-sand-500 focus:outline-hidden"
+                onChange={setText}
+                minRows={7}
+                placeholder="Draft your content with rich markdown formatting, or insert templates..."
               />
             </div>
 
-            {/* Image Preview if checked */}
+            {/* Image Preview & Real CV / OCR / Copyright / Inappropriate Analysis */}
             {selectedImage && (
-              <div className="p-3 rounded-xl border border-sand-200 bg-sand-50 flex items-center justify-between text-xs">
-                <div className="flex items-center gap-3">
-                  <img src={selectedImage} alt="Uploaded" className="h-12 w-12 object-cover rounded-md" />
-                  <div>
-                    <div className="font-bold text-sand-900">Palette Match: 92%</div>
-                    <div className="text-[10px] text-sand-500">Contrast: {imageAnalysis?.contrastRatio || '14.2'}:1</div>
+              <div className="p-4 rounded-xl border border-sand-300 bg-sand-50/70 space-y-3 text-xs">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-center gap-3">
+                    <img
+                      src={selectedImage}
+                      alt="Uploaded Creative"
+                      className="h-16 w-16 object-cover rounded-lg border border-sand-300 shadow-2xs"
+                    />
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2">
+                        <span className="font-bold text-sand-900">
+                          Brand Palette Match: {imageAnalysis?.paletteScore ?? 84}%
+                        </span>
+                        <span
+                          className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                            (imageAnalysis?.paletteScore ?? 84) >= 80
+                              ? 'bg-emerald-50 text-emerald-800 border-emerald-300'
+                              : 'bg-amber-50 text-amber-800 border-amber-300'
+                          }`}
+                        >
+                          {(imageAnalysis?.paletteScore ?? 84) >= 80 ? 'Compliant' : 'Palette Drift'}
+                        </span>
+                      </div>
+
+                      <div className="flex items-center gap-2 text-[11px] text-sand-600">
+                        <span>Contrast: {imageAnalysis?.contrastRatio || '14.2'}:1</span>
+                        <span>•</span>
+                        <span className="flex items-center gap-1">
+                          Colors:
+                          {imageAnalysis?.dominantHexes?.map((hex: string, i: number) => (
+                            <span
+                              key={i}
+                              title={hex}
+                              className="h-3 w-3 rounded-full border border-sand-400 inline-block"
+                              style={{ backgroundColor: hex }}
+                            />
+                          ))}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={() => {
+                      setSelectedImage(null);
+                      setImageAnalysis(null);
+                    }}
+                    className="text-xs font-semibold text-rose-600 hover:text-rose-700"
+                  >
+                    Remove
+                  </button>
+                </div>
+
+                {/* Safety & Copyright Badges */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1 border-t border-sand-200">
+                  {/* Inappropriate Figure Check */}
+                  <div
+                    className={`p-2 rounded-lg border flex items-center gap-2 text-[11px] ${
+                      imageAnalysis?.isInappropriate
+                        ? 'bg-rose-50 text-rose-900 border-rose-300'
+                        : 'bg-emerald-50 text-emerald-900 border-emerald-300'
+                    }`}
+                  >
+                    {imageAnalysis?.isInappropriate ? (
+                      <>
+                        <ShieldAlert className="h-4 w-4 text-rose-600 shrink-0" />
+                        <div>
+                          <strong className="block">Inappropriate Figure / Content Flagged</strong>
+                          <span className="text-[10px] opacity-90">
+                            {imageAnalysis.inappropriateExplanation || 'Violates brand safety standards.'}
+                          </span>
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <ShieldCheck className="h-4 w-4 text-emerald-600 shrink-0" />
+                        <div>
+                          <strong>Content & Figure Safety: Clean</strong>
+                          <span className="block text-[10px] text-emerald-700">No inappropriate or NSFW figures</span>
+                        </div>
+                      </>
+                    )}
+                  </div>
+
+                  {/* Copyright / Watermark Check */}
+                  <div
+                    className={`p-2 rounded-lg border flex items-center gap-2 text-[11px] ${
+                      imageAnalysis?.watermarksDetected?.length > 0 || imageAnalysis?.copyrightRiskLevel === 'high'
+                        ? 'bg-purple-50 text-purple-900 border-purple-300'
+                        : 'bg-emerald-50 text-emerald-900 border-emerald-300'
+                    }`}
+                  >
+                    {imageAnalysis?.watermarksDetected?.length > 0 || imageAnalysis?.copyrightRiskLevel === 'high' ? (
+                      <>
+                        <AlertTriangle className="h-4 w-4 text-purple-600 shrink-0" />
+                        <div>
+                          <strong className="block">Copyright / Stock Watermark Risk</strong>
+                          <span className="text-[10px] opacity-90">
+                            Watermarks: {imageAnalysis.watermarksDetected?.join(', ') || 'Unlicensed stock photo markers'}
+                          </span>
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <ShieldCheck className="h-4 w-4 text-emerald-600 shrink-0" />
+                        <div>
+                          <strong>Copyright Chances: Low Risk ({imageAnalysis?.copyrightScore ?? 95}%)</strong>
+                          <span className="block text-[10px] text-emerald-700">No stock photo watermarks detected</span>
+                        </div>
+                      </>
+                    )}
                   </div>
                 </div>
-                <button onClick={() => setSelectedImage(null)} className="text-xs text-rose-600 hover:underline">
-                  Remove
-                </button>
+
+                {/* OCR Extracted Text from Image */}
+                {imageAnalysis?.extractedText && (
+                  <div className="p-2.5 rounded-lg border border-sand-300 bg-white space-y-1">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[11px] font-bold text-sand-800 flex items-center gap-1.5">
+                        <FileSearch className="h-3.5 w-3.5 text-sand-600" />
+                        Extracted Text from Image (OCR)
+                      </span>
+                      <button
+                        onClick={() => setText(imageAnalysis.extractedText)}
+                        className="text-[10px] font-bold text-sand-700 hover:text-sand-900 underline"
+                      >
+                        Load into Editor
+                      </button>
+                    </div>
+                    <p className="text-[11px] text-sand-700 italic font-mono bg-sand-50 p-2 rounded border border-sand-200">
+                      "{imageAnalysis.extractedText}"
+                    </p>
+                  </div>
+                )}
               </div>
             )}
 
@@ -452,7 +698,7 @@ export const ReviewEngine: React.FC<ReviewEngineProps> = ({
                   </div>
                 </div>
 
-                <div className="space-y-2 text-xs">
+                <div className="space-y-2.5 text-xs">
                   <div>
                     <div className="flex justify-between text-sand-700 font-medium mb-1">
                       <span>Tone & Voice</span>
@@ -473,21 +719,6 @@ export const ReviewEngine: React.FC<ReviewEngineProps> = ({
                     </div>
                   </div>
 
-                  {reviewResult.grammarScore !== undefined && (
-                    <div>
-                      <div className="flex justify-between text-sand-700 font-medium mb-1">
-                        <span>Spelling & Grammar</span>
-                        <span className="font-bold">{reviewResult.grammarScore}%</span>
-                      </div>
-                      <div className="h-1.5 w-full bg-sand-100 rounded-full overflow-hidden">
-                        <div
-                          className="h-full bg-orange-500 rounded-full transition-all duration-500"
-                          style={{ width: `${reviewResult.grammarScore}%` }}
-                        />
-                      </div>
-                    </div>
-                  )}
-
                   <div>
                     <div className="flex justify-between text-sand-700 font-medium mb-1">
                       <span>Claims & Citations</span>
@@ -500,6 +731,19 @@ export const ReviewEngine: React.FC<ReviewEngineProps> = ({
 
                   <div>
                     <div className="flex justify-between text-sand-700 font-medium mb-1">
+                      <span>Spelling & Grammar</span>
+                      <span className="font-bold">{reviewResult.grammarScore ?? 100}%</span>
+                    </div>
+                    <div className="h-1.5 w-full bg-sand-100 rounded-full overflow-hidden">
+                      <div
+                        className="h-full bg-orange-500 rounded-full transition-all duration-500"
+                        style={{ width: `${reviewResult.grammarScore ?? 100}%` }}
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <div className="flex justify-between text-sand-700 font-medium mb-1">
                       <span>Accessibility (WCAG)</span>
                       <span className="font-bold">{reviewResult.accessibilityScore}%</span>
                     </div>
@@ -507,9 +751,22 @@ export const ReviewEngine: React.FC<ReviewEngineProps> = ({
                       <div className="h-full bg-emerald-600 rounded-full" style={{ width: `${reviewResult.accessibilityScore}%` }} />
                     </div>
                   </div>
+
+                  <div>
+                    <div className="flex justify-between text-sand-700 font-medium mb-1">
+                      <span>Copyright Chances</span>
+                      <span className="font-bold">{reviewResult.copyrightScore ?? 95}%</span>
+                    </div>
+                    <div className="h-1.5 w-full bg-sand-100 rounded-full overflow-hidden">
+                      <div
+                        className="h-full bg-purple-600 rounded-full transition-all duration-500"
+                        style={{ width: `${reviewResult.copyrightScore ?? 95}%` }}
+                      />
+                    </div>
+                  </div>
                 </div>
 
-                <div className="p-2.5 rounded-lg bg-sand-50 border border-sand-200 text-[11px] text-sand-600">
+                <div className="text-[10px] text-sand-500 text-center pt-1">
                   {reviewResult.aiDisclosure}
                 </div>
               </div>
@@ -526,13 +783,10 @@ export const ReviewEngine: React.FC<ReviewEngineProps> = ({
       {/* Side by Side Diff & Suggestion Actions */}
       {reviewResult && (
         <div className="bg-sand-50/70 p-5 rounded-2xl border border-sand-300 space-y-3">
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between pb-1 border-b border-sand-200">
             <h3 className="text-xs font-bold text-sand-900 uppercase tracking-wider">
-              Explainable Flags & Intent-Preserving Rewrite
+              Audit Results & Rewrites
             </h3>
-            <span className="text-[10px] text-sand-500 font-mono">
-              {reviewResult.issues.length} issues flagged
-            </span>
           </div>
 
           <DiffViewer

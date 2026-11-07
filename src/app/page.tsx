@@ -17,6 +17,7 @@ import {
   AuditLogEntry,
 } from '@/lib/types';
 import { AuthScreen } from '@/components/AuthScreen';
+import { LandingPage } from '@/components/LandingPage';
 import { Navbar } from '@/components/Navbar';
 import { Sidebar, NavTab } from '@/components/Sidebar';
 import { RoleDashboard } from '@/components/RoleDashboard';
@@ -32,6 +33,8 @@ export default function Home() {
   const [organizations, setOrganizations] = useState<Organization[]>(INITIAL_ORGS);
   const [accounts, setAccounts] = useState<UserAccount[]>(INITIAL_ACCOUNTS);
   const [currentUser, setCurrentUser] = useState<UserAccount | null>(null);
+  const [viewMode, setViewMode] = useState<'landing' | 'auth'>('landing');
+  const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
 
   const [activeTab, setActiveTab] = useState<NavTab>('dashboard');
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
@@ -91,8 +94,23 @@ export default function Home() {
 
   const handleLogout = () => {
     setCurrentUser(null);
+    setViewMode('landing');
     try {
       localStorage.removeItem('vibecheck_session_user');
+    } catch (e) {}
+  };
+
+  const handleUpdateUser = (updatedUser: UserAccount) => {
+    setCurrentUser(updatedUser);
+    setAccounts((prev) =>
+      prev.map((acc) => (acc.id === updatedUser.id ? updatedUser : acc))
+    );
+    try {
+      localStorage.setItem('vibecheck_session_user', JSON.stringify(updatedUser));
+      const savedAccounts = accounts.map((acc) =>
+        acc.id === updatedUser.id ? updatedUser : acc
+      );
+      localStorage.setItem('vibecheck_accounts', JSON.stringify(savedAccounts));
     } catch (e) {}
   };
 
@@ -159,26 +177,37 @@ export default function Home() {
     (s) => s.status === 'in_review' || s.status === 'changes_requested'
   ).length;
 
-  // If not logged in, render the clean login / registration screen
+  // If not logged in, render the clean landing page or login / registration screen
   if (!currentUser) {
+    if (viewMode === 'landing') {
+      return (
+        <LandingPage
+          onExploreWorkspace={() => setViewMode('auth')}
+          onLoginClick={() => setViewMode('auth')}
+        />
+      );
+    }
+
     return (
       <AuthScreen
         organizations={organizations}
         accounts={accounts}
         onLogin={handleLogin}
         onRegister={handleRegister}
+        onBackToLanding={() => setViewMode('landing')}
       />
     );
   }
 
   return (
     <div className="min-h-screen flex flex-col bg-[#FAF8F5]">
-      {/* Top Navigation Bar: Cleaned up with no extra active badges or role selector */}
+      {/* Top Navigation Bar */}
       <Navbar
         currentUser={currentUser}
         organization={currentOrg}
         onLogout={handleLogout}
         onOpenSettings={() => setIsSettingsOpen(true)}
+        onToggleMobileMenu={() => setIsMobileNavOpen(!isMobileNavOpen)}
       />
 
       {/* Main Workspace Body */}
@@ -190,6 +219,8 @@ export default function Home() {
           pendingQueueCount={pendingReviewCount}
           userRole={currentUser.role}
           orgName={currentOrg.name}
+          isMobileOpen={isMobileNavOpen}
+          onCloseMobile={() => setIsMobileNavOpen(false)}
         />
 
         {/* Dynamic Workspace Area */}
@@ -323,6 +354,7 @@ export default function Home() {
         organization={currentOrg}
         currentUser={currentUser}
         teamMembers={orgTeamMembers}
+        onUpdateUser={handleUpdateUser}
       />
     </div>
   );

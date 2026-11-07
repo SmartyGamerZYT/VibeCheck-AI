@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useState } from 'react';
 import {
   UserAccount,
   Organization,
@@ -18,11 +18,14 @@ import {
   TrendingUp,
   FileText,
   AlertTriangle,
+  PenTool,
+  X,
 } from 'lucide-react';
+import { DocumentEditor } from './DocumentEditor';
 
 interface RoleDashboardProps {
   currentUser: UserAccount;
-  organization: Organization;
+  organization?: Organization;
   teamMembers: UserAccount[];
   submissions: ContentSubmission[];
   guidelines: BrandGuidelineConfig;
@@ -33,12 +36,26 @@ interface RoleDashboardProps {
 export const RoleDashboard: React.FC<RoleDashboardProps> = ({
   currentUser,
   organization,
-  teamMembers,
-  submissions,
+  teamMembers = [],
+  submissions = [],
   guidelines,
   onNavigate,
   onOpenSettings,
 }) => {
+  const safeOrg = organization || {
+    id: currentUser?.orgId || 'org_lumina',
+    name: currentUser?.orgName || 'Workspace',
+    adminKey: 'ORG-KEY',
+    createdAt: new Date().toISOString(),
+    adminId: currentUser?.id || 'usr_1',
+    adminEmail: currentUser?.email || 'admin@vibecheck.ai',
+  };
+
+  const [isEditorOpen, setIsEditorOpen] = useState(false);
+  const [editorText, setEditorText] = useState(
+    '### Welcome to VibeCheck AI Document Composer\n\nDraft your product launch copy, clinical announcements, or social posts here with full rich formatting before submitting for compliance audit.'
+  );
+
   const pendingApprovals = submissions.filter((s) => s.status === 'in_review');
   const changesRequested = submissions.filter((s) => s.status === 'changes_requested');
   const approvedCount = submissions.filter((s) => s.status === 'approved').length;
@@ -55,7 +72,7 @@ export const RoleDashboard: React.FC<RoleDashboardProps> = ({
               Admin Console
             </span>
             <h2 className="text-xl font-serif font-bold text-sand-900 mt-1">
-              {organization.name} Workspace
+              {safeOrg.name} Workspace
             </h2>
             <p className="text-xs text-sand-600 mt-0.5">
               Admin: <strong>{currentUser.name}</strong> ({currentUser.email})
@@ -69,7 +86,7 @@ export const RoleDashboard: React.FC<RoleDashboardProps> = ({
                 Organization Invite Key
               </div>
               <div className="font-mono font-bold text-sm text-sand-900">
-                {organization.adminKey}
+                {safeOrg.adminKey}
               </div>
             </div>
             <button
@@ -129,7 +146,7 @@ export const RoleDashboard: React.FC<RoleDashboardProps> = ({
               </button>
             </h3>
             <p className="text-xs text-sand-600">
-              Manage forbidden vocabulary, clinical claim citations, and tone sliders for {organization.name}.
+              Manage forbidden vocabulary, clinical claim citations, and tone sliders for {safeOrg.name}.
             </p>
           </div>
 
@@ -144,7 +161,7 @@ export const RoleDashboard: React.FC<RoleDashboardProps> = ({
               </button>
             </h3>
             <p className="text-xs text-sand-600">
-              Share <strong>{organization.adminKey}</strong> with new team members so they join your company account.
+              Share <strong>{safeOrg.adminKey}</strong> with new team members so they join your company account.
             </p>
           </div>
         </div>
@@ -165,7 +182,7 @@ export const RoleDashboard: React.FC<RoleDashboardProps> = ({
               Sign-Off & Publication Management
             </h2>
             <p className="text-xs text-sand-600 mt-0.5">
-              Organization: <strong>{organization.name}</strong> • Manager: <strong>{currentUser.name}</strong>
+              Organization: <strong>{safeOrg.name}</strong> • Manager: <strong>{currentUser.name}</strong>
             </p>
           </div>
 
@@ -264,7 +281,7 @@ export const RoleDashboard: React.FC<RoleDashboardProps> = ({
               Editorial Standards & Fact Verification
             </h2>
             <p className="text-xs text-sand-600 mt-0.5">
-              Reviewing for <strong>{organization.name}</strong> • Reviewer: <strong>{currentUser.name}</strong>
+              Reviewing for <strong>{safeOrg.name}</strong> • Reviewer: <strong>{currentUser.name}</strong>
             </p>
           </div>
 
@@ -314,7 +331,7 @@ export const RoleDashboard: React.FC<RoleDashboardProps> = ({
               </button>
             </h3>
             <p className="text-xs text-sand-600">
-              Run multi-factor AI scans on content drafts, documents, or ad copy against {organization.name} guidelines.
+              Run multi-factor AI scans on content drafts, documents, or ad copy against {safeOrg.name} guidelines.
             </p>
           </div>
 
@@ -349,17 +366,26 @@ export const RoleDashboard: React.FC<RoleDashboardProps> = ({
             Brand Governance & Content Composer
           </h2>
           <p className="text-xs text-sand-600 mt-0.5">
-            Connected to: <strong>{organization.name}</strong> • Creator: <strong>{currentUser.name}</strong>
+            Connected to: <strong>{safeOrg.name}</strong> • Creator: <strong>{currentUser.name}</strong>
           </p>
         </div>
 
-        <button
-          onClick={() => onNavigate('review')}
-          className="px-4 py-2 rounded-xl bg-sand-900 text-sand-50 text-xs font-semibold hover:bg-sand-800 flex items-center gap-1.5 shadow-xs"
-        >
-          <Sparkles className="h-3.5 w-3.5 text-sand-300" />
-          New Draft & AI Scan
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setIsEditorOpen(true)}
+            className="px-3.5 py-2 rounded-xl bg-white border border-sand-300 hover:bg-sand-50 text-sand-800 text-xs font-semibold flex items-center gap-1.5 shadow-2xs"
+          >
+            <PenTool className="h-3.5 w-3.5 text-[#9C6342]" />
+            Quick Document Editor
+          </button>
+          <button
+            onClick={() => onNavigate('review')}
+            className="px-4 py-2 rounded-xl bg-sand-900 text-sand-50 text-xs font-semibold hover:bg-sand-800 flex items-center gap-1.5 shadow-xs"
+          >
+            <Sparkles className="h-3.5 w-3.5 text-sand-300" />
+            New Draft & AI Scan
+          </button>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -403,9 +429,55 @@ export const RoleDashboard: React.FC<RoleDashboardProps> = ({
           </button>
         </div>
         <p className="text-xs text-sand-600 leading-relaxed">
-          Verify your text, DOCX document, social copy, or email against {organization.name}&apos;s tone, glossary, and factual guidelines. Get instant explainable flags and intent-preserving rewrite suggestions.
+          Verify your text, DOCX document, social copy, or email against {safeOrg.name}&apos;s tone, glossary, and factual guidelines. Get instant explainable flags and intent-preserving rewrite suggestions.
         </p>
       </div>
+
+      {/* Quick Document Composer / Scratchpad Modal */}
+      {isEditorOpen && (
+        <div className="fixed inset-0 z-50 bg-sand-950/50 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl border border-sand-300 shadow-modal max-w-2xl w-full p-5 space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-sand-200">
+              <div className="flex items-center gap-2">
+                <PenTool className="h-4 w-4 text-[#9C6342]" />
+                <h3 className="font-serif font-bold text-base text-sand-900">
+                  Quick Document Composer & Editor
+                </h3>
+              </div>
+              <button
+                onClick={() => setIsEditorOpen(false)}
+                className="text-sand-400 hover:text-sand-800 p-1 rounded-lg"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <DocumentEditor
+              value={editorText}
+              onChange={setEditorText}
+              minRows={8}
+            />
+
+            <div className="flex items-center justify-between pt-2">
+              <button
+                onClick={() => setIsEditorOpen(false)}
+                className="px-3.5 py-2 rounded-lg bg-sand-100 hover:bg-sand-200 text-sand-800 text-xs font-semibold"
+              >
+                Close
+              </button>
+              <button
+                onClick={() => {
+                  setIsEditorOpen(false);
+                  onNavigate('review');
+                }}
+                className="px-4 py-2 rounded-lg bg-[#9C6342] hover:bg-[#865133] text-white text-xs font-semibold flex items-center gap-1.5 shadow-xs"
+              >
+                Audit in Review Engine →
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
