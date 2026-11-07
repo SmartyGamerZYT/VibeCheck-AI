@@ -43,10 +43,11 @@ export async function analyzeImageWithVisionAI(
   issues: ComplianceIssue[];
   recommendations: string[];
 }> {
-  const apiKey =
-    customApiKey ||
-    process.env.OPENROUTER_API_KEY ||
-    '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';
+  const apiKey = (customApiKey || process.env.OPENROUTER_API_KEY || '').trim();
+
+  if (!apiKey) {
+    return fallbackImageInspection(imageBase64);
+  }
 
   const systemPrompt = `You are VibeCheck AI Vision Auditor.
 Analyze the provided image for:

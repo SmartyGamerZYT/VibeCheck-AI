@@ -281,11 +281,7 @@ export async function analyzeContentWithOpenRouter(
   channel?: string,
   customApiKey?: string
 ): Promise<ReviewResult> {
-  let apiKey = (
-    customApiKey ||
-    process.env.OPENROUTER_API_KEY ||
-    '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'
-  ).trim();
+  let apiKey = (customApiKey || process.env.OPENROUTER_API_KEY || '').trim();
 
   // Normalize if user entered a leading hyphen or omitted hyphen after v1
   if (apiKey.startsWith('-')) apiKey = apiKey.substring(1);
