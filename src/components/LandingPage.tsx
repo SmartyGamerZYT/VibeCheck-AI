@@ -107,8 +107,6 @@ export const LandingPage: React.FC<LandingPageProps> = ({
             >
               Compliance Overview
             </a>
-            <span className="text-sand-300">|</span>
-            <span className="text-[11px] text-sand-500 font-mono">v2.4 Intelligent Governance</span>
           </nav>
 
           {/* Action CTAs */}
@@ -121,7 +119,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
             </button>
             <button
               onClick={onExploreWorkspace}
-              className="px-4 py-2 rounded-lg bg-[#9C6342] hover:bg-[#865133] text-white text-xs font-semibold flex items-center gap-1.5 transition-all shadow-xs"
+              className="px-4 py-2 rounded-lg bg-[#3C311F] hover:bg-[#2B2316] text-white text-xs font-semibold flex items-center gap-1.5 transition-all shadow-xs"
             >
               Explore workspace
               <ArrowRight className="h-3.5 w-3.5" />
@@ -136,7 +134,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
           {/* Left Column (Hero Content) */}
           <div className="lg:col-span-7 space-y-6">
             <div className="inline-flex items-center gap-2">
-              <span className="text-[10px] font-bold uppercase tracking-widest text-[#9C6342] font-mono">
+              <span className="text-[10px] font-bold uppercase tracking-widest text-[#3C311F] font-mono">
                 INTELLIGENT BRAND GOVERNANCE
               </span>
             </div>
@@ -158,7 +156,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
             <div className="flex flex-wrap items-center gap-4 pt-2">
               <button
                 onClick={onExploreWorkspace}
-                className="px-5 py-3 rounded-lg bg-[#9C6342] hover:bg-[#865133] text-white text-xs sm:text-sm font-semibold flex items-center gap-2 transition-all shadow-xs group"
+                className="px-5 py-3 rounded-lg bg-[#3C311F] hover:bg-[#2B2316] text-white text-xs sm:text-sm font-semibold flex items-center gap-2 transition-all shadow-xs group"
               >
                 Explore workspace
                 <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
@@ -226,7 +224,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
                   {/* Contradicted */}
                   <div className="flex items-center justify-between text-xs p-2 rounded-lg hover:bg-sand-50 transition-colors">
                     <div className="flex items-center gap-2.5">
-                      <span className="h-2 w-2 rounded-full bg-[#9C6342] shrink-0" />
+                      <span className="h-2 w-2 rounded-full bg-[#3C311F] shrink-0" />
                       <div>
                         <span className="font-semibold text-sand-900">Contradicted</span>
                         <p className="text-[10px] text-sand-500">Conflicts with a guideline</p>
@@ -284,7 +282,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
                 key={step.num}
                 className={`bg-white rounded-2xl border transition-all duration-300 flex flex-col justify-between ${
                   isOpen
-                    ? 'border-[#9C6342]/70 shadow-md ring-1 ring-[#9C6342]/20'
+                    ? 'border-[#3C311F]/70 shadow-md ring-1 ring-[#3C311F]/20'
                     : 'border-sand-300/80 shadow-2xs hover:border-sand-400 hover:shadow-xs'
                 }`}
               >
@@ -295,7 +293,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
                   </div>
 
                   {/* Icon in warm rounded container */}
-                  <div className="h-10 w-10 rounded-xl bg-[#F4EFE6] flex items-center justify-center text-[#9C6342]">
+                  <div className="h-10 w-10 rounded-xl bg-[#F4EFE6] flex items-center justify-center text-[#3C311F]">
                     <Icon className="h-5 w-5" />
                   </div>
 
@@ -321,7 +319,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
                 <div className="px-5 sm:px-6 pb-5 pt-1">
                   <button
                     onClick={() => handleToggleCard(idx)}
-                    className="text-xs font-semibold text-[#9C6342] hover:text-[#7F4B2E] flex items-center gap-1 transition-colors"
+                    className="text-xs font-semibold text-[#3C311F] hover:text-[#2B2316] flex items-center gap-1 transition-colors"
                   >
                     {isOpen ? (
                       <>
@@ -353,7 +351,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
           </div>
           <button
             onClick={onExploreWorkspace}
-            className="px-5 py-2.5 rounded-lg bg-[#9C6342] hover:bg-[#865133] text-white text-xs font-semibold flex items-center justify-center gap-1.5 transition-all shadow-xs shrink-0"
+            className="px-5 py-2.5 rounded-lg bg-[#3C311F] hover:bg-[#2B2316] text-white text-xs font-semibold flex items-center justify-center gap-1.5 transition-all shadow-xs shrink-0"
           >
             Enter Workspace
             <ArrowRight className="h-3.5 w-3.5" />
