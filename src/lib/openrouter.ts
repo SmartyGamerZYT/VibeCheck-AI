@@ -274,6 +274,16 @@ const BRAND_SAFETY_ADULT_TERMS = [
   { term: 'hookup', rep: 'engagement', note: 'Casual intimacy slang violates professional editorial guidelines.' },
 ];
 
+function normalizeOpenRouterKey(k?: string): string {
+  if (!k) return '';
+  let key = k.trim().replace(/['"]/g, '');
+  if (key.startsWith('-')) key = key.substring(1);
+  if (key.startsWith('sk-or-v1') && !key.startsWith('sk-or-v1-')) {
+    key = 'sk-or-v1-' + key.substring(8);
+  }
+  return key;
+}
+
 export async function analyzeContentWithOpenRouter(
   content: string,
   guidelines: BrandGuidelineConfig,
@@ -281,42 +291,41 @@ export async function analyzeContentWithOpenRouter(
   channel?: string,
   customApiKey?: string
 ): Promise<ReviewResult> {
-  let apiKey = (customApiKey || process.env.OPENROUTER_API_KEY || '').trim();
+  const envKey = normalizeOpenRouterKey(process.env.OPENROUTER_API_KEY);
+  const userKey = normalizeOpenRouterKey(customApiKey);
 
-  // Normalize if user entered a leading hyphen or omitted hyphen after v1
-  if (apiKey.startsWith('-')) apiKey = apiKey.substring(1);
-  if (apiKey.startsWith('sk-or-v1') && !apiKey.startsWith('sk-or-v1-')) {
-    apiKey = 'sk-or-v1-' + apiKey.substring(8);
+  // Build candidate keys to try: user key first, then server env key
+  const candidateKeys: string[] = [];
+  if (userKey && userKey.startsWith('sk-or-v1-')) candidateKeys.push(userKey);
+  if (envKey && envKey.startsWith('sk-or-v1-') && !candidateKeys.includes(envKey)) {
+    candidateKeys.push(envKey);
   }
 
-  // If a key is present and looks valid, attempt OpenRouter call
-  if (apiKey && apiKey.startsWith('sk-or-v1-')) {
-    const systemPrompt = `You are VibeCheck AI, an elite brand-governance, editorial, and compliance auditor.
-Your job is to thoroughly review the draft content before publication against:
-1. Brand Safety & Content Guidelines (STRICTLY flag sexual content, adult innuendo, vulgarity, or off-brand themes).
-2. Spelling, Grammatical, and Typographical errors (mark every single misspelled word, incorrect tense, or grammar mistake).
-3. Brand Guidelines, Tone sliders, Approved Glossary (forbidden words -> preferred alternatives), and Competitor mentions.
-4. Unsupported medical/promotional claims (guarantees, unverified statistics).
+  // Format admin approved claims for strict enforcement
+  const approvedClaimsList =
+    guidelines.approvedClaims && guidelines.approvedClaims.length > 0
+      ? guidelines.approvedClaims
+          .map((c, i) => `${i + 1}. "${c.claim}" (Category: ${c.category}, Citation: ${c.source})`)
+          .join('\n')
+      : 'No approved claims registered by admin. Any factual efficacy, guarantee, or percentage claim is STRICTLY UNVERIFIED.';
 
-Brand Name: "${guidelines.brandName}"
-Mission: "${guidelines.missionStatement}"
-Tone Sliders: Formal vs Casual: ${guidelines.toneSliders.formalVsCasual}/100, Serious vs Playful: ${guidelines.toneSliders.seriousVsPlayful}/100, Reserved vs Bold: ${guidelines.toneSliders.reservedVsBold}/100
-
-Approved Glossary:
+  const systemPrompt = `You are VibeCheck AI, an elite brand-governance, editorial, and compliance auditor.
+Your job is to thoroughly review draft content before publication against:
+1. SPELLING & GRAMMAR (PRIMARY FOCUS): Mark every misspelled word, incorrect verb tense ("decided to went" -> "decided to go", "buyed" -> "bought", "thinked" -> "thought", "runned" -> "ran", "comed" -> "came", "choosed" -> "chose", "payed" -> "paid"), subject-verb disagreement ("weather were" -> "weather was", "man who were" -> "man who was", "it were" -> "it was"), and infinitive errors ("to went" -> "to go", "to finished" -> "to finish"). Provide exact originalText and suggestedReplacement for EACH.
+2. TONE & VOICE: Preserve the user's authentic narrative, storyline, and intent. Refine awkward phrasing into engaging, polished copy that reflects brand tone. DO NOT replace the creator's story with a generic corporate slogan.
+3. ADMIN CLAIM POINTS & EXCESS CLAIMS:
+ADMIN APPROVED CLAIM POINTS:
+${approvedClaimsList}
+CRITICAL CLAIM RULE: If the creator content asserts factual/statistical claims, guarantees, percentages, or medical/clinical promises that EXCEED or are NOT in the approved claim points above, you MUST flag each one as guidelineRef "RULE-CLAIM-EXCESS", category "claims", severity "critical".
+Explanation: "Excess claim violation: This statement exceeds the authorized claim points registered by brand administrators. Unauthorized claims cannot be accepted."
+If excess claims exist, set claimsScore <= 35 and overallScore <= 45.
+4. BRAND SAFETY: Strictly flag sexual terms, vulgarity, or adult slang with category "safety", severity "critical".
+5. APPROVED GLOSSARY:
 ${guidelines.approvedGlossary.map((g) => `- Forbidden: "${g.forbidden}" -> Preferred: "${g.preferred}" (${g.reason})`).join('\n')}
+6. COMPETITOR LOCKOUT: ${guidelines.competitorLockout.join(', ')}
+7. SCORING: Calculate realistic scores (0-100). If spelling errors, grammatical mistakes, or excess claims exist, overallScore MUST be significantly reduced (e.g. 20-50).
 
-Competitor Lockout: ${guidelines.competitorLockout.join(', ')}
-
-Brand Rules:
-${guidelines.rules.map((r) => `- [${r.ruleCode}] ${r.title}: ${r.description} (${r.severity})`).join('\n')}
-
-INSTRUCTIONS:
-1. If the content has ANY spelling mistake (like "becouse", "vegtables", "forgoten", "beatiful", "letuce") or grammatical error ("decided to went", "my friend and me decided", "weather were", "thinked", "runned", "comed"), mark each with category "spelling" or "grammar", and provide the exact correct replacement.
-2. If the content contains ANY sexual, explicit, or inappropriate words, mark them with category "safety", severity "critical", and explain the brand safety violation.
-3. If the content is casual diary/grocery text completely unrelated to the brand's health mission and submitted as Ad Copy, flag tone/brand mismatch.
-4. Calculate realistic scores (0-100). If issues are found, the overallScore MUST be lower than 100! (e.g. 15-50 depending on error count).
-5. Provide a full rewritten text (suggestedFullText) fixing all mistakes.
-6. Return ONLY valid JSON:
+Return ONLY a valid JSON object matching this schema:
 {
   "overallScore": number,
   "toneScore": number,
@@ -326,28 +335,29 @@ INSTRUCTIONS:
   "accessibilityScore": number,
   "grammarScore": number,
   "copyrightScore": number,
-  "summary": "plain english executive summary of findings",
+  "summary": "plain English executive summary of audit findings",
   "issues": [
     {
       "id": "iss_1",
-      "guidelineRef": "RULE CODE or GLOSSARY or SPELL or GRAMMAR or COPYRIGHT",
+      "guidelineRef": "RULE CODE or GLOSSARY or RULE-LANG-SPELL or RULE-LANG-GRAMMAR or RULE-CLAIM-EXCESS",
       "category": "safety" | "spelling" | "grammar" | "tone" | "terminology" | "claims" | "competitor" | "copyright",
       "severity": "critical" | "warning" | "suggestion",
-      "originalText": "exact text flagged",
-      "suggestedReplacement": "corrected / compliant text",
-      "explanation": "explanation of the mistake and policy involved",
+      "originalText": "exact text flagged in draft",
+      "suggestedReplacement": "corrected / compliant replacement",
+      "explanation": "concise explanation of violation and correction",
       "status": "pending"
     }
   ],
-  "suggestedFullText": "complete suggested rewrite"
+  "suggestedFullText": "full rewritten text fixing all spelling, grammar, and tone issues while preserving creator story"
 }`;
 
-    const candidateModels = [
-      'meta-llama/llama-3.3-70b-instruct',
-      'meta-llama/llama-3.1-8b-instruct:free',
-      'mistralai/mistral-7b-instruct:free',
-    ];
+  const candidateModels = [
+    'meta-llama/llama-3.3-70b-instruct',
+    'meta-llama/llama-3.1-8b-instruct:free',
+    'mistralai/mistral-7b-instruct:free',
+  ];
 
+  for (const apiKey of candidateKeys) {
     for (const modelName of candidateModels) {
       try {
         const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
@@ -368,7 +378,8 @@ INSTRUCTIONS:
               },
             ],
             temperature: 0.1,
-            max_tokens: 3000,
+            max_tokens: 2500,
+            response_format: { type: 'json_object' },
           }),
         });
 
@@ -396,7 +407,7 @@ INSTRUCTIONS:
                 ...parsed,
                 copyrightScore: finalCopyrightScore,
                 issues: mergedIssues,
-                aiDisclosure: `Audited with OpenRouter LLM (${data.model || modelName}). Human review required before publication.`,
+                aiDisclosure: `Audited with AI (${data.model || modelName}). Human verification recommended before publication.`,
                 analyzedAt: new Date().toISOString(),
                 modelUsed: `OpenRouter (${modelName})`,
               };
@@ -404,7 +415,7 @@ INSTRUCTIONS:
           }
         }
       } catch (err) {
-        console.warn(`OpenRouter model ${modelName} error:`, err);
+        console.warn(`OpenRouter model ${modelName} error with key:`, err);
       }
     }
   }
@@ -631,7 +642,7 @@ export function runComprehensiveNLPReview(
   });
 
   // ----------------------------------------------------
-  // 8. UNVERIFIED PROMOTIONAL CLAIMS & SUPERLATIVES
+  // 8. ADMIN CLAIM POINTS & EXCESS CLAIMS ENFORCEMENT
   // ----------------------------------------------------
   const unverifiedWords = [
     { word: 'guaranteed', rep: 'clinically supported', note: 'Unqualified guarantee violates regulatory and brand compliance standards.' },
@@ -646,8 +657,8 @@ export function runComprehensiveNLPReview(
     if (!alreadyCaught) {
       const regex = new RegExp(`\\b${item.word}\\b`, 'gi');
       if (regex.test(content)) {
-        claimDeduction += 15;
-        scoreDeduction += 15;
+        claimDeduction += 20;
+        scoreDeduction += 20;
         issues.push({
           id: `iss_claim_${issueCounter++}`,
           guidelineRef: 'RULE-CLAIM-01',
@@ -663,28 +674,65 @@ export function runComprehensiveNLPReview(
     }
   });
 
+  // Verify against Admin Approved Claims Repository
+  const approvedClaimTexts = (guidelines.approvedClaims || []).map((c) => c.claim.toLowerCase());
+  const excessClaimRegexes = [
+    { pattern: /\b(\d+%\s+(?:guaranteed|effective|reduction|increase|improvement|cure))\b/gi, label: 'Statistical percentage claim' },
+    { pattern: /\b(?:clinically proven|scientifically proven|guarantee|cure all|instant results)\b/gi, label: 'Unverified assertion' },
+  ];
+
+  excessClaimRegexes.forEach(({ pattern, label }) => {
+    let cm;
+    while ((cm = pattern.exec(content)) !== null) {
+      const phrase = cm[0];
+      const matchesApproved = approvedClaimTexts.some((c) => c.includes(phrase.toLowerCase()));
+      if (!matchesApproved && !issues.some((i) => i.originalText.toLowerCase() === phrase.toLowerCase())) {
+        claimDeduction += 30;
+        scoreDeduction += 30;
+        issues.push({
+          id: `iss_claim_excess_${issueCounter++}`,
+          guidelineRef: 'RULE-CLAIM-EXCESS',
+          category: 'claims',
+          severity: 'critical',
+          originalText: phrase,
+          suggestedReplacement: guidelines.approvedClaims?.[0]?.claim || 'verified brand statement',
+          explanation: `Excess Claim Violation: "${phrase}" exceeds the verified claim points registered by brand administrators. Unauthorized claims cannot be accepted by the governance system.`,
+          status: 'pending',
+        });
+      }
+    }
+  });
+
   // ----------------------------------------------------
-  // 9. BRAND TOPIC & TONE MISALIGNMENT
+  // 9. BRAND TOPIC & TONE (INTENT-PRESERVING, NO SLOGAN REPLACEMENTS)
   // ----------------------------------------------------
-  // If content is an Ad Copy / Headline for a clinical/health brand,
-  // but mentions nothing related to health/science/members/wellness, flag it!
-  const healthKeywords = ['health', 'wellness', 'clinical', 'medical', 'therapy', 'member', 'care', 'protocol', 'treatment', 'vitality', 'doctor', 'patient', 'trial', 'science'];
-  const hasBrandContext = healthKeywords.some((k) => content.toLowerCase().includes(k));
-  
-  if (!hasBrandContext && (format === 'ad_copy' || format === 'email')) {
-    toneDeduction += 18;
-    scoreDeduction += 18;
-    issues.push({
-      id: `iss_tone_brand_${issueCounter++}`,
-      guidelineRef: 'RULE-TONE-MISSION',
-      category: 'tone',
-      severity: 'warning',
-      originalText: content.substring(0, 50) + '...',
-      suggestedReplacement: `${guidelines.brandName}: Dedicated to advancing evidence-based wellness and member health.`,
-      explanation: `Content lacks connection to ${guidelines.brandName}'s core mission ("${guidelines.missionStatement}"). Promotional ad copy should clearly articulate brand value and health solutions.`,
-      status: 'pending',
-    });
-  }
+  // Only flag tone if aggressive or overly casual jargon is detected
+  const overlyCasualSlang = [
+    { slang: 'gonna', rep: 'going to' },
+    { slang: 'wanna', rep: 'want to' },
+    { slang: 'dunno', rep: 'do not know' },
+    { slang: 'kinda', rep: 'somewhat' },
+    { slang: 'sorta', rep: 'rather' },
+  ];
+
+  overlyCasualSlang.forEach((item) => {
+    const reg = new RegExp(`\\b${item.slang}\\b`, 'gi');
+    if (reg.test(content)) {
+      toneDeduction += 8;
+      scoreDeduction += 8;
+      issues.push({
+        id: `iss_tone_${issueCounter++}`,
+        guidelineRef: 'RULE-TONE-SLANG',
+        category: 'tone',
+        severity: 'suggestion',
+        originalText: item.slang,
+        suggestedReplacement: item.rep,
+        explanation: `Colloquial abbreviation "${item.slang}" conflicts with professional brand voice. Use "${item.rep}".`,
+        status: 'pending',
+      });
+      suggestedText = suggestedText.replace(reg, item.rep);
+    }
+  });
 
   // ----------------------------------------------------
   // 10. COPYRIGHT & TRADEMARK SLOGAN DETECTION

@@ -309,6 +309,17 @@ export const ReviewEngine: React.FC<ReviewEngineProps> = ({
 
   // Submit to Review Queue
   const handleSubmitQueue = async () => {
+    // Check if content asserts unauthorized excess claims beyond admin certified claim points
+    const hasExcessClaims = reviewResult?.issues?.some(
+      (i) => (i.guidelineRef === 'RULE-CLAIM-EXCESS' || (i.category === 'claims' && i.severity === 'critical')) && i.status !== 'accepted'
+    );
+    if (hasExcessClaims) {
+      alert(
+        'Submission Blocked: Content contains unauthorized claims that exceed admin-certified claim points. Please remove or align claims with official brand points before submitting.'
+      );
+      return;
+    }
+
     setIsSubmitting(true);
     const newSubmission: Partial<ContentSubmission> = {
       id: `sub_${Date.now()}`,
@@ -504,21 +515,26 @@ export const ReviewEngine: React.FC<ReviewEngineProps> = ({
                     <div className="space-y-1">
                       <div className="flex items-center gap-2">
                         <span className="font-bold text-sand-900">
-                          Brand Palette Match: {imageAnalysis?.paletteScore ?? 84}%
+                          Brand Palette Match:{' '}
+                          {imageAnalysis?.paletteScore !== undefined ? `${imageAnalysis.paletteScore}%` : 'Calculating...'}
                         </span>
-                        <span
-                          className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
-                            (imageAnalysis?.paletteScore ?? 84) >= 80
-                              ? 'bg-emerald-50 text-emerald-800 border-emerald-300'
-                              : 'bg-amber-50 text-amber-800 border-amber-300'
-                          }`}
-                        >
-                          {(imageAnalysis?.paletteScore ?? 84) >= 80 ? 'Compliant' : 'Palette Drift'}
-                        </span>
+                        {imageAnalysis?.paletteScore !== undefined && (
+                          <span
+                            className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                              imageAnalysis.paletteScore >= 80
+                                ? 'bg-emerald-50 text-emerald-800 border-emerald-300'
+                                : imageAnalysis.paletteScore >= 60
+                                ? 'bg-amber-50 text-amber-800 border-amber-300'
+                                : 'bg-rose-50 text-rose-800 border-rose-300'
+                            }`}
+                          >
+                            {imageAnalysis.paletteScore >= 80 ? 'Compliant' : imageAnalysis.paletteScore >= 60 ? 'Moderate Alignment' : 'Off-Brand Colors'}
+                          </span>
+                        )}
                       </div>
 
                       <div className="flex items-center gap-2 text-[11px] text-sand-600">
-                        <span>Contrast: {imageAnalysis?.contrastRatio || '14.2'}:1</span>
+                        <span>Contrast: {imageAnalysis?.contrastRatio ? `${imageAnalysis.contrastRatio}:1` : 'Calculating'}</span>
                         <span>•</span>
                         <span className="flex items-center gap-1">
                           Colors:
@@ -577,21 +593,33 @@ export const ReviewEngine: React.FC<ReviewEngineProps> = ({
                     )}
                   </div>
 
-                  {/* Copyright / Watermark Check */}
+                  {/* Dynamic Copyright / Watermark Check */}
                   <div
                     className={`p-2 rounded-lg border flex items-center gap-2 text-[11px] ${
                       imageAnalysis?.watermarksDetected?.length > 0 || imageAnalysis?.copyrightRiskLevel === 'high'
-                        ? 'bg-purple-50 text-purple-900 border-purple-300'
+                        ? 'bg-rose-50 text-rose-900 border-rose-300'
+                        : imageAnalysis?.copyrightRiskLevel === 'medium'
+                        ? 'bg-amber-50 text-amber-900 border-amber-300'
                         : 'bg-emerald-50 text-emerald-900 border-emerald-300'
                     }`}
                   >
                     {imageAnalysis?.watermarksDetected?.length > 0 || imageAnalysis?.copyrightRiskLevel === 'high' ? (
                       <>
-                        <AlertTriangle className="h-4 w-4 text-purple-600 shrink-0" />
+                        <AlertTriangle className="h-4 w-4 text-rose-600 shrink-0" />
                         <div>
-                          <strong className="block">Copyright / Stock Watermark Risk</strong>
+                          <strong className="block">Copyright Chances: High Risk ({100 - (imageAnalysis.copyrightScore || 25)}% Risk)</strong>
                           <span className="text-[10px] opacity-90">
-                            Watermarks: {imageAnalysis.watermarksDetected?.join(', ') || 'Unlicensed stock photo markers'}
+                            Watermarks: {imageAnalysis.watermarksDetected?.join(', ') || 'Stock agency markers detected'}
+                          </span>
+                        </div>
+                      </>
+                    ) : imageAnalysis?.copyrightRiskLevel === 'medium' ? (
+                      <>
+                        <AlertTriangle className="h-4 w-4 text-amber-600 shrink-0" />
+                        <div>
+                          <strong className="block">Copyright Chances: Moderate Risk ({100 - (imageAnalysis?.copyrightScore || 60)}% Risk)</strong>
+                          <span className="text-[10px] opacity-90">
+                            {imageAnalysis?.copyrightExplanation || 'Potential trademark or third-party visual similarity.'}
                           </span>
                         </div>
                       </>
@@ -599,8 +627,14 @@ export const ReviewEngine: React.FC<ReviewEngineProps> = ({
                       <>
                         <ShieldCheck className="h-4 w-4 text-emerald-600 shrink-0" />
                         <div>
-                          <strong>Copyright Chances: Low Risk ({imageAnalysis?.copyrightScore ?? 95}%)</strong>
-                          <span className="block text-[10px] text-emerald-700">No stock photo watermarks detected</span>
+                          <strong>
+                            Copyright Chances: Original IP ({imageAnalysis?.copyrightScore !== undefined ? `${imageAnalysis.copyrightScore}% Safe` : 'Verified'})
+                          </strong>
+                          <span className="block text-[10px] text-emerald-700">
+                            {imageAnalysis?.watermarksDetected?.length
+                              ? imageAnalysis.watermarksDetected.join(', ')
+                              : imageAnalysis?.copyrightExplanation || 'No stock photo watermarks detected'}
+                          </span>
                         </div>
                       </>
                     )}
@@ -656,8 +690,21 @@ export const ReviewEngine: React.FC<ReviewEngineProps> = ({
 
               <button
                 onClick={handleSubmitQueue}
-                disabled={isSubmitting || !text.trim()}
-                className="px-4 py-2 rounded-xl font-semibold text-xs bg-emerald-700 hover:bg-emerald-800 text-white flex items-center gap-1.5 shadow-xs"
+                disabled={
+                  isSubmitting ||
+                  !text.trim() ||
+                  reviewResult?.issues?.some(
+                    (i) => (i.guidelineRef === 'RULE-CLAIM-EXCESS' || (i.category === 'claims' && i.severity === 'critical')) && i.status !== 'accepted'
+                  )
+                }
+                className="px-4 py-2 rounded-xl font-semibold text-xs bg-emerald-700 hover:bg-emerald-800 disabled:bg-sand-300 disabled:cursor-not-allowed text-white flex items-center gap-1.5 shadow-xs transition-colors"
+                title={
+                  reviewResult?.issues?.some(
+                    (i) => (i.guidelineRef === 'RULE-CLAIM-EXCESS' || (i.category === 'claims' && i.severity === 'critical')) && i.status !== 'accepted'
+                  )
+                    ? 'Blocked: Content contains excess unauthorized claims exceeding admin certified claim points.'
+                    : 'Submit content to workflow queue'
+                }
               >
                 <Send className="h-3.5 w-3.5" />
                 Submit to Queue
@@ -681,22 +728,39 @@ export const ReviewEngine: React.FC<ReviewEngineProps> = ({
 
             {reviewResult ? (
               <div className="space-y-3.5">
-                <div
-                  className={`p-3.5 rounded-xl border text-center ${getScoreBadgeColor(
-                    reviewResult.overallScore
-                  )}`}
-                >
-                  <div className="text-2xl font-serif font-extrabold">
-                    {reviewResult.overallScore}%
+                {reviewResult.issues?.some(
+                  (i) => (i.guidelineRef === 'RULE-CLAIM-EXCESS' || (i.category === 'claims' && i.severity === 'critical')) && i.status !== 'accepted'
+                ) ? (
+                  <div className="p-3 rounded-xl border border-rose-300 bg-rose-50 text-rose-900 text-center space-y-1">
+                    <div className="text-xl font-bold flex items-center justify-center gap-1.5 text-rose-700">
+                      <ShieldAlert className="h-5 w-5" />
+                      Unauthorized Claims
+                    </div>
+                    <div className="text-[10px] font-bold uppercase tracking-wider text-rose-800">
+                      System Action: Rejected & Blocked
+                    </div>
+                    <p className="text-[10px] text-rose-700 leading-tight">
+                      Content asserts claims exceeding admin-certified points. Remove excess claims before submitting.
+                    </p>
                   </div>
-                  <div className="text-[10px] font-bold uppercase tracking-wider mt-0.5">
-                    {reviewResult.overallScore >= 85
-                      ? 'Approved for Publication'
-                      : reviewResult.overallScore >= 65
-                      ? 'Revisions Recommended'
-                      : 'Critical Governance Issues'}
+                ) : (
+                  <div
+                    className={`p-3.5 rounded-xl border text-center ${getScoreBadgeColor(
+                      reviewResult.overallScore
+                    )}`}
+                  >
+                    <div className="text-2xl font-serif font-extrabold">
+                      {reviewResult.overallScore}%
+                    </div>
+                    <div className="text-[10px] font-bold uppercase tracking-wider mt-0.5">
+                      {reviewResult.overallScore >= 85
+                        ? 'Approved for Publication'
+                        : reviewResult.overallScore >= 65
+                        ? 'Revisions Recommended'
+                        : 'Critical Governance Issues'}
+                    </div>
                   </div>
-                </div>
+                )}
 
                 <div className="space-y-2.5 text-xs">
                   <div>
@@ -754,13 +818,23 @@ export const ReviewEngine: React.FC<ReviewEngineProps> = ({
 
                   <div>
                     <div className="flex justify-between text-sand-700 font-medium mb-1">
-                      <span>Copyright Chances</span>
-                      <span className="font-bold">{reviewResult.copyrightScore ?? 95}%</span>
+                      <span>Copyright Safety</span>
+                      <span className="font-bold">
+                        {reviewResult.copyrightScore !== undefined
+                          ? `${reviewResult.copyrightScore}%`
+                          : `${Math.max(20, 100 - (reviewResult.issues?.filter((i) => i.category === 'copyright').length || 0) * 25)}%`}
+                      </span>
                     </div>
                     <div className="h-1.5 w-full bg-sand-100 rounded-full overflow-hidden">
                       <div
                         className="h-full bg-purple-600 rounded-full transition-all duration-500"
-                        style={{ width: `${reviewResult.copyrightScore ?? 95}%` }}
+                        style={{
+                          width: `${
+                            reviewResult.copyrightScore !== undefined
+                              ? reviewResult.copyrightScore
+                              : Math.max(20, 100 - (reviewResult.issues?.filter((i) => i.category === 'copyright').length || 0) * 25)
+                          }%`,
+                        }}
                       />
                     </div>
                   </div>

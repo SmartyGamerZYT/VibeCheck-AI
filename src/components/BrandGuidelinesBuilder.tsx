@@ -17,6 +17,7 @@ import {
   AlertOctagon,
   Sparkles,
   Save,
+  Pin,
 } from 'lucide-react';
 
 interface BrandGuidelinesBuilderProps {
@@ -49,6 +50,11 @@ export const BrandGuidelinesBuilder: React.FC<BrandGuidelinesBuilderProps> = ({
 
   // New Competitor
   const [newCompetitor, setNewCompetitor] = useState('');
+
+  // New Color Pin inputs
+  const [newColorName, setNewColorName] = useState('');
+  const [newColorHex, setNewColorHex] = useState('#A3704C');
+  const [newColorRole, setNewColorRole] = useState<'primary' | 'secondary' | 'accent' | 'background' | 'text'>('accent');
 
   const isAdminOrManager = currentUser.role === 'admin' || currentUser.role === 'manager';
 
@@ -125,6 +131,27 @@ export const BrandGuidelinesBuilder: React.FC<BrandGuidelinesBuilderProps> = ({
     setConfig((prev) => ({
       ...prev,
       competitorLockout: prev.competitorLockout.filter((c) => c !== name),
+    }));
+  };
+
+  const handleAddColor = () => {
+    if (!newColorHex.trim()) return;
+    const name = newColorName.trim() || `Brand ${newColorRole.charAt(0).toUpperCase() + newColorRole.slice(1)}`;
+    const hex = newColorHex.trim().startsWith('#') ? newColorHex.trim().toUpperCase() : `#${newColorHex.trim().toUpperCase()}`;
+    
+    if (config.colorPalette.some((c) => c.hex.toLowerCase() === hex.toLowerCase())) return;
+
+    setConfig((prev) => ({
+      ...prev,
+      colorPalette: [...prev.colorPalette, { name, hex, role: newColorRole }],
+    }));
+    setNewColorName('');
+  };
+
+  const handleDeleteColor = (hexToDelete: string) => {
+    setConfig((prev) => ({
+      ...prev,
+      colorPalette: prev.colorPalette.filter((c) => c.hex.toLowerCase() !== hexToDelete.toLowerCase()),
     }));
   };
 
@@ -510,27 +537,112 @@ export const BrandGuidelinesBuilder: React.FC<BrandGuidelinesBuilderProps> = ({
       {/* 4. Color Palette */}
       {activeSubTab === 'palette' && (
         <div className="bg-white p-6 rounded-2xl border border-sand-300 shadow-xs space-y-6">
-          <div className="space-y-1">
-            <h3 className="text-sm font-bold text-sand-900 uppercase tracking-wider">
-              Sandstone Minimal Beige Color Palette
-            </h3>
-            <p className="text-xs text-sand-600">
-              Approved color tokens extracted from brand assets for visual and accessibility auditing.
-            </p>
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <div>
+              <h3 className="text-sm font-bold text-sand-900 uppercase tracking-wider">
+                Approved Brand Color Palette
+              </h3>
+              <p className="text-xs text-sand-600">
+                Colors used by Computer Vision to score visual compliance and contrast.
+              </p>
+            </div>
+            <div className="text-xs font-semibold px-2.5 py-1 bg-sand-100 text-sand-700 rounded-full w-fit">
+              {config.colorPalette.length} Pinned Colors
+            </div>
           </div>
 
-          <div className="grid grid-cols-2 sm:grid-cols-5 gap-4">
+          {/* Admin Add / Pin Color Form */}
+          {isAdminOrManager && (
+            <div className="p-4 rounded-xl border border-sand-300 bg-sand-50/70 space-y-3">
+              <div className="flex items-center gap-2 text-xs font-bold text-sand-900">
+                <Pin className="h-4 w-4 text-sand-700" />
+                Add Color by Pin
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+                <div className="space-y-1">
+                  <label className="text-[11px] font-bold text-sand-700 uppercase">Pick Color / Hex</label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="color"
+                      value={newColorHex.startsWith('#') && newColorHex.length === 7 ? newColorHex : '#A3704C'}
+                      onChange={(e) => setNewColorHex(e.target.value.toUpperCase())}
+                      className="h-8 w-10 p-0 rounded border border-sand-300 cursor-pointer bg-white"
+                      title="Click to pick a color"
+                    />
+                    <input
+                      type="text"
+                      placeholder="#HEX"
+                      value={newColorHex}
+                      onChange={(e) => setNewColorHex(e.target.value)}
+                      className="flex-1 text-xs font-mono p-2 rounded-lg border border-sand-300 bg-white"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[11px] font-bold text-sand-700 uppercase">Color Name</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Amber Gold, Forest Green"
+                    value={newColorName}
+                    onChange={(e) => setNewColorName(e.target.value)}
+                    className="w-full text-xs p-2 rounded-lg border border-sand-300 bg-white"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[11px] font-bold text-sand-700 uppercase">Palette Role</label>
+                  <select
+                    value={newColorRole}
+                    onChange={(e) => setNewColorRole(e.target.value as any)}
+                    className="w-full text-xs p-2 rounded-lg border border-sand-300 bg-white"
+                  >
+                    <option value="primary">Primary</option>
+                    <option value="secondary">Secondary</option>
+                    <option value="accent">Accent</option>
+                    <option value="background">Background</option>
+                    <option value="text">Text</option>
+                  </select>
+                </div>
+
+                <div className="flex items-end">
+                  <button
+                    onClick={handleAddColor}
+                    className="w-full py-2 px-3 text-xs font-bold rounded-lg bg-sand-900 text-sand-50 hover:bg-sand-800 flex items-center justify-center gap-1.5 transition-colors shadow-2xs"
+                  >
+                    <Pin className="h-3.5 w-3.5" />
+                    Pin to Palette
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Color Grid with Remove Option */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-5 gap-4">
             {config.colorPalette.map((col) => (
               <div
                 key={col.hex}
-                className="p-3 rounded-xl border border-sand-200 bg-sand-50/50 space-y-2 text-center"
+                className="relative group p-3 rounded-xl border border-sand-200 bg-sand-50/50 space-y-2 text-center transition-all hover:border-sand-400"
               >
+                {isAdminOrManager && (
+                  <button
+                    onClick={() => handleDeleteColor(col.hex)}
+                    title="Remove color from brand palette"
+                    className="absolute top-2 right-2 p-1 rounded-full bg-white/90 border border-sand-300 text-sand-400 hover:text-rose-600 shadow-2xs transition-colors z-10"
+                  >
+                    <Trash2 className="h-3 w-3" />
+                  </button>
+                )}
                 <div
                   style={{ backgroundColor: col.hex }}
                   className="h-16 w-full rounded-lg border border-sand-300 shadow-xs"
                 />
                 <div>
-                  <div className="text-xs font-bold text-sand-900">{col.name}</div>
+                  <div className="text-xs font-bold text-sand-900 truncate" title={col.name}>
+                    {col.name}
+                  </div>
                   <div className="text-[11px] font-mono text-sand-600">{col.hex}</div>
                   <div className="text-[9px] uppercase font-bold text-sand-500 mt-1">
                     {col.role}

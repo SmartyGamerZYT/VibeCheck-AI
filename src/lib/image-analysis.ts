@@ -43,9 +43,11 @@ export async function analyzeImageWithVisionAI(
   issues: ComplianceIssue[];
   recommendations: string[];
 }> {
-  const apiKey = (customApiKey || process.env.OPENROUTER_API_KEY || '').trim();
+  const envKey = (process.env.OPENROUTER_API_KEY || '').trim().replace(/['"]/g, '');
+  const userKey = (customApiKey || '').trim().replace(/['"]/g, '');
+  const candidateKeys = [userKey, envKey].filter((k) => k && k.startsWith('sk-or-v1-'));
 
-  if (!apiKey) {
+  if (candidateKeys.length === 0) {
     return fallbackImageInspection(imageBase64);
   }
 
@@ -80,52 +82,62 @@ Return ONLY valid JSON:
   "recommendations": ["recommendation 1", "recommendation 2"]
 }`;
 
-  try {
-    const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiKey}`,
-        'HTTP-Referer': 'https://vibecheck-ai.internal',
-        'X-Title': 'VibeCheck AI Vision',
-      },
-      body: JSON.stringify({
-        model: 'google/gemini-2.5-flash',
-        messages: [
-          {
-            role: 'user',
-            content: [
-              { type: 'text', text: systemPrompt },
-              { type: 'image_url', image_url: { url: imageBase64 } }
-            ]
-          }
-        ],
-        max_tokens: 2000,
-        temperature: 0.1,
-      }),
-    });
+  const visionModels = ['google/gemini-2.5-flash', 'qwen/qwen-2.5-vl-72b-instruct'];
 
-    if (res.ok) {
-      const data = await res.json();
-      const reply = data.choices?.[0]?.message?.content;
-      if (reply) {
-        const cleanJson = reply.replace(/```json/g, '').replace(/```/g, '').trim();
-        const parsed = JSON.parse(cleanJson);
-        return {
-          extractedText: parsed.extractedText || '',
-          isInappropriate: !!parsed.isInappropriate,
-          inappropriateExplanation: parsed.inappropriateExplanation || '',
-          copyrightRiskLevel: parsed.copyrightRiskLevel || 'low',
-          copyrightScore: parsed.copyrightScore || (parsed.copyrightRiskLevel === 'high' ? 30 : parsed.copyrightRiskLevel === 'medium' ? 65 : 95),
-          copyrightExplanation: parsed.copyrightExplanation || 'No unauthorized third-party watermarks or trademark infringements detected.',
-          watermarksDetected: parsed.watermarksDetected || [],
-          issues: parsed.issues || [],
-          recommendations: parsed.recommendations || [],
-        };
+  for (const apiKey of candidateKeys) {
+    for (const modelName of visionModels) {
+      try {
+        const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${apiKey}`,
+            'HTTP-Referer': 'https://vibecheck-ai.internal',
+            'X-Title': 'VibeCheck AI Vision',
+          },
+          body: JSON.stringify({
+            model: modelName,
+            messages: [
+              {
+                role: 'user',
+                content: [
+                  { type: 'text', text: systemPrompt },
+                  { type: 'image_url', image_url: { url: imageBase64 } },
+                ],
+              },
+            ],
+            max_tokens: 1000,
+            temperature: 0.1,
+          }),
+        });
+
+        if (res.ok) {
+          const data = await res.json();
+          const reply = data.choices?.[0]?.message?.content;
+          if (reply) {
+            const cleanJson = reply.replace(/```json/g, '').replace(/```/g, '').trim();
+            const parsed = JSON.parse(cleanJson);
+            return {
+              extractedText: parsed.extractedText || '',
+              isInappropriate: !!parsed.isInappropriate,
+              inappropriateExplanation: parsed.inappropriateExplanation || '',
+              copyrightRiskLevel: parsed.copyrightRiskLevel || 'low',
+              copyrightScore:
+                parsed.copyrightScore ||
+                (parsed.copyrightRiskLevel === 'high' ? 30 : parsed.copyrightRiskLevel === 'medium' ? 65 : 95),
+              copyrightExplanation:
+                parsed.copyrightExplanation ||
+                'No unauthorized third-party watermarks or trademark infringements detected.',
+              watermarksDetected: parsed.watermarksDetected || [],
+              issues: parsed.issues || [],
+              recommendations: parsed.recommendations || [],
+            };
+          }
+        }
+      } catch (err) {
+        console.warn(`Vision AI call with ${modelName} error:`, err);
       }
     }
-  } catch (err) {
-    console.warn('Vision AI call warning; activating heuristic visual scanner:', err);
   }
 
   // Fallback Heuristic Image Inspection
