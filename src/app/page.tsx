@@ -7,6 +7,8 @@ import {
   DEFAULT_BRAND_GUIDELINES,
   INITIAL_SUBMISSIONS,
   INITIAL_AUDIT_LOGS,
+  INITIAL_PROJECTS,
+  INITIAL_CHANGE_RECORDS,
 } from '@/lib/default-data';
 import {
   Organization,
@@ -15,6 +17,8 @@ import {
   BrandGuidelineConfig,
   BrandAsset,
   AuditLogEntry,
+  Project,
+  TeamChangeRecord,
 } from '@/lib/types';
 import { AuthScreen } from '@/components/AuthScreen';
 import { LandingPage } from '@/components/LandingPage';
@@ -28,6 +32,9 @@ import { AssetLibrary } from '@/components/AssetLibrary';
 import { AnalyticsInsights } from '@/components/AnalyticsInsights';
 import { AuditLogs } from '@/components/AuditLogs';
 import { SettingsModal } from '@/components/SettingsModal';
+import { CollaborationHub } from '@/components/CollaborationHub';
+import { MediaAudit } from '@/components/MediaAudit';
+import { WorkflowIntegrations } from '@/components/WorkflowIntegrations';
 
 export default function Home() {
   const [organizations, setOrganizations] = useState<Organization[]>(INITIAL_ORGS);
@@ -43,6 +50,8 @@ export default function Home() {
   const [submissions, setSubmissions] = useState<ContentSubmission[]>(INITIAL_SUBMISSIONS);
   const [assets, setAssets] = useState<BrandAsset[]>([]);
   const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>(INITIAL_AUDIT_LOGS);
+  const [projects, setProjects] = useState<Project[]>(INITIAL_PROJECTS);
+  const [changeRecords, setChangeRecords] = useState<TeamChangeRecord[]>(INITIAL_CHANGE_RECORDS);
 
   // Load persisted session & state if available
   useEffect(() => {
@@ -55,10 +64,46 @@ export default function Home() {
 
       const savedUser = localStorage.getItem('vibecheck_session_user');
       if (savedUser) setCurrentUser(JSON.parse(savedUser));
+
+      const savedProjects = localStorage.getItem('vibecheck_projects');
+      if (savedProjects) setProjects(JSON.parse(savedProjects));
+
+      const savedChanges = localStorage.getItem('vibecheck_changes');
+      if (savedChanges) setChangeRecords(JSON.parse(savedChanges));
     } catch (e) {
       console.warn('Storage load error:', e);
     }
   }, []);
+
+  const handleAddProject = (newProj: Project) => {
+    setProjects((prev) => {
+      const updated = [newProj, ...prev];
+      try {
+        localStorage.setItem('vibecheck_projects', JSON.stringify(updated));
+      } catch (e) {}
+      return updated;
+    });
+  };
+
+  const handleUpdateProject = (updatedProj: Project) => {
+    setProjects((prev) => {
+      const updated = prev.map((p) => (p.id === updatedProj.id ? updatedProj : p));
+      try {
+        localStorage.setItem('vibecheck_projects', JSON.stringify(updated));
+      } catch (e) {}
+      return updated;
+    });
+  };
+
+  const handleAddChangeRecord = (record: TeamChangeRecord) => {
+    setChangeRecords((prev) => {
+      const updated = [record, ...prev];
+      try {
+        localStorage.setItem('vibecheck_changes', JSON.stringify(updated));
+      } catch (e) {}
+      return updated;
+    });
+  };
 
   // Save changes to localStorage
   const handleLogin = (user: UserAccount) => {
@@ -236,6 +281,37 @@ export default function Home() {
                 guidelines={guidelines}
                 onNavigate={setActiveTab}
                 onOpenSettings={() => setIsSettingsOpen(true)}
+              />
+            )}
+
+            {/* 1.5 COLLABORATION HUB (MULTIPLE PROJECTS, TIMELINES, TEAM CHANGES & HUDDLE) */}
+            {activeTab === 'collaboration' && (
+              <CollaborationHub
+                currentUser={currentUser}
+                teamMembers={orgTeamMembers}
+                projects={projects}
+                changeRecords={changeRecords}
+                onAddProject={handleAddProject}
+                onUpdateProject={handleUpdateProject}
+                onAddChangeRecord={handleAddChangeRecord}
+                onLogAudit={handleLogAudit}
+              />
+            )}
+
+            {/* 1.6 MULTIMEDIA (AUDIO & VIDEO) AUDIT */}
+            {activeTab === 'media-audit' && (
+              <MediaAudit
+                guidelines={guidelines}
+                currentUser={currentUser}
+                onLogAudit={handleLogAudit}
+              />
+            )}
+
+            {/* 1.7 WORKFLOW PLATFORM INTEGRATIONS (YouTube, Canva, Teams, GitHub, etc.) */}
+            {activeTab === 'integrations' && (
+              <WorkflowIntegrations
+                currentUser={currentUser}
+                onLogAudit={handleLogAudit}
               />
             )}
 

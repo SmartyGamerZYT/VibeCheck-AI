@@ -101,7 +101,7 @@ export interface ApprovalSignature {
   remarks?: string;
 }
 
-export type ContentFormat = 'text' | 'docx' | 'image' | 'social' | 'ad_copy' | 'email';
+export type ContentFormat = 'text' | 'docx' | 'image' | 'social' | 'ad_copy' | 'email' | 'audio' | 'video';
 export type SubmissionStatus = 'draft' | 'in_review' | 'changes_requested' | 'approved' | 'rejected';
 
 export interface ContentSubmission {
@@ -204,5 +204,164 @@ export interface AuditLogEntry {
   userRole: UserRole;
   action: string;
   details: string;
-  category: 'review' | 'workflow' | 'guideline' | 'security' | 'asset';
+  category: 'review' | 'workflow' | 'guideline' | 'security' | 'asset' | 'collaboration' | 'media';
+}
+
+// ==========================================
+// COLLABORATION HUB & PROJECT TIMELINE TYPES
+// ==========================================
+
+export type ProjectStatus =
+  | 'just_started'
+  | 'in_progress'
+  | 'under_review'
+  | 'revisions'
+  | 'completed';
+
+export interface ProjectMilestone {
+  id: string;
+  title: string;
+  description: string;
+  status: 'pending' | 'in_progress' | 'completed';
+  targetDate: string;
+  completedAt?: string;
+  completedBy?: string;
+}
+
+export interface TeamChangeRecord {
+  id: string;
+  projectId: string;
+  submissionId?: string;
+  authorId: string;
+  authorName: string;
+  authorRole: UserRole;
+  authorAvatar?: string;
+  timestamp: string;
+  changeType: 'text_edit' | 'status_change' | 'comment' | 'approval' | 'guideline_override' | 'media_upload';
+  description: string;
+  contentSnippetBefore?: string;
+  contentSnippetAfter?: string;
+  charDelta?: number;
+}
+
+export interface Project {
+  id: string;
+  orgId: string;
+  title: string;
+  description: string;
+  status: ProjectStatus;
+  progressPercent: number;
+  startDate: string;
+  targetDeadline: string;
+  assignedCreators: string[]; // UserAccount ids
+  assignedReviewers: string[]; // UserAccount ids
+  submissionIds: string[];
+  milestones: ProjectMilestone[];
+  channels: string[];
+  tags: string[];
+}
+
+export interface LiveTeamPresence {
+  userId: string;
+  userName: string;
+  userRole: UserRole;
+  userAvatar?: string;
+  currentActivity: 'editing' | 'reviewing' | 'idle' | 'in_call';
+  currentSection?: string;
+  lastActive: string;
+}
+
+export interface HuddleCallSession {
+  id: string;
+  projectId: string;
+  projectTitle: string;
+  isActive: boolean;
+  isScreenSharing: boolean;
+  screenSharerName?: string;
+  participants: {
+    userId: string;
+    userName: string;
+    userRole: UserRole;
+    isMuted: boolean;
+    isVideoOn: boolean;
+    isSpeaking: boolean;
+  }[];
+  startedAt: string;
+}
+
+// ==========================================
+// AUDIO & VIDEO MULTIMEDIA AUDIT TYPES
+// ==========================================
+
+export interface AudioAnalysisResult {
+  mediaUrl: string;
+  durationSeconds: number;
+  transcription: string;
+  brandVoicePitchScore: number; // 0-100
+  speechCadenceWordsPerMin: number;
+  fillerWordRatioPercent: number;
+  loudnessLUFS: number; // e.g. -14 LUFS (EBU standard)
+  isLoudnessCompliant: boolean;
+  backgroundMusicDetected: boolean;
+  musicCopyrightStatus: 'royalty_free' | 'unlicensed_risk' | 'licensed_library';
+  musicCopyrightScore: number;
+  musicTrackMatch?: string;
+  profanityOrSafetyFlags: string[];
+  recommendations: string[];
+}
+
+export interface VideoKeyframeAudit {
+  timestampSeconds: number;
+  frameImageUrl: string;
+  detectedText: string;
+  paletteAdherenceScore: number;
+  dominantHexes: string[];
+  watermarksOrStockMarkers: string[];
+  logoDetected: boolean;
+  contrastPassesAA: boolean;
+}
+
+export interface VideoAnalysisResult {
+  mediaUrl: string;
+  durationSeconds: number;
+  aspectRatio: string;
+  resolution: string;
+  overallVideoScore: number;
+  visualConsistencyScore: number;
+  subtitlesPresent: boolean;
+  subtitlesReadingSpeedWPM: number;
+  subtitlesContrastRatio: number;
+  stockWatermarkRiskLevel: 'low' | 'medium' | 'high';
+  stockWatermarksDetected: string[];
+  audioSyncAudit: AudioAnalysisResult;
+  keyframes: VideoKeyframeAudit[];
+  identifiedIssues: ComplianceIssue[];
+  recommendations: string[];
+}
+
+// ==========================================
+// WORKFLOW INTEGRATIONS (YouTube, Canva, Teams, GitHub, etc.)
+// ==========================================
+
+export type SupportedIntegrationPlatform =
+  | 'youtube'
+  | 'canva'
+  | 'teams'
+  | 'github'
+  | 'slack'
+  | 'figma'
+  | 'hubspot';
+
+export interface ConnectedPlatform {
+  id: SupportedIntegrationPlatform;
+  name: string;
+  category: 'video' | 'design' | 'collaboration' | 'code' | 'marketing';
+  description: string;
+  isConnected: boolean;
+  connectedAccount?: string;
+  connectedAt?: string;
+  lastSyncAt?: string;
+  autoSyncApprovedContent: boolean;
+  webhookUrl?: string;
+  channelOrWorkspace?: string;
 }

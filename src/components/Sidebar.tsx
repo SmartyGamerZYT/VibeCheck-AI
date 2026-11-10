@@ -11,14 +11,20 @@ import {
   ShieldAlert,
   Users,
   X,
+  FolderKanban,
+  Film,
+  Workflow,
 } from 'lucide-react';
 import { UserRole } from '@/lib/types';
 
 export type NavTab =
   | 'dashboard'
+  | 'collaboration'
+  | 'media-audit'
   | 'review'
   | 'queue'
   | 'guidelines'
+  | 'integrations'
   | 'assets'
   | 'analytics'
   | 'audit'
@@ -52,6 +58,18 @@ export const Sidebar: React.FC<SidebarProps> = ({
         icon: LayoutDashboard,
         badge: null,
       },
+      {
+        id: 'collaboration' as NavTab,
+        label: 'Collaboration Hub',
+        icon: FolderKanban,
+        badge: null,
+      },
+      {
+        id: 'media-audit' as NavTab,
+        label: 'Audio & Video Audit',
+        icon: Film,
+        badge: null,
+      },
     ];
 
     if (userRole === 'admin') {
@@ -68,6 +86,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
           label: 'All Submissions',
           icon: ListTodo,
           badge: pendingQueueCount > 0 ? pendingQueueCount : null,
+        },
+        {
+          id: 'integrations' as NavTab,
+          label: 'Workflow Integrations',
+          icon: Workflow,
+          badge: null,
         },
         {
           id: 'team' as NavTab,
@@ -118,6 +142,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
           badge: null,
         },
         {
+          id: 'integrations' as NavTab,
+          label: 'Workflow Integrations',
+          icon: Workflow,
+          badge: null,
+        },
+        {
           id: 'assets' as NavTab,
           label: 'Brand Assets',
           icon: FolderGit2,
@@ -154,6 +184,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
           badge: null,
         },
         {
+          id: 'integrations' as NavTab,
+          label: 'Workflow Integrations',
+          icon: Workflow,
+          badge: null,
+        },
+        {
           id: 'assets' as NavTab,
           label: 'Approved Assets',
           icon: FolderGit2,
@@ -181,6 +217,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
         id: 'guidelines' as NavTab,
         label: 'Brand Guidelines',
         icon: BookOpenCheck,
+        badge: null,
+      },
+      {
+        id: 'integrations' as NavTab,
+        label: 'Workflow Integrations',
+        icon: Workflow,
         badge: null,
       },
       {
