@@ -8,7 +8,6 @@ import {
   TeamChangeRecord,
   UserAccount,
   UserRole,
-  HuddleCallSession,
 } from '@/lib/types';
 import {
   FolderKanban,
@@ -23,11 +22,10 @@ import {
   VideoOff,
   MonitorUp,
   PhoneOff,
+  PhoneCall,
   History,
   MessageSquare,
   Sparkles,
-  ChevronRight,
-  Send,
   Radio,
   FileEdit,
   Shield,
@@ -37,6 +35,8 @@ import {
   Eye,
   Activity,
   Maximize2,
+  UserPlus,
+  X,
 } from 'lucide-react';
 
 interface CollaborationHubProps {
@@ -77,44 +77,41 @@ export const CollaborationHub: React.FC<CollaborationHubProps> = ({
 
   // Interactive Live Huddle / Video Call State
   const [isInCall, setIsInCall] = useState(false);
-  const [isMuted, setIsMuted] = useState(false);
-  const [isVideoOn, setIsVideoOn] = useState(true);
+  const [isMicActive, setIsMicActive] = useState(true);
+  const [isCamActive, setIsCamActive] = useState(true);
   const [isScreenSharing, setIsScreenSharing] = useState(false);
+  const [camStream, setCamStream] = useState<MediaStream | null>(null);
+  const [screenStream, setScreenStream] = useState<MediaStream | null>(null);
+  const [mediaNotice, setMediaNotice] = useState<string | null>(null);
+
+  // Dynamic Call Participants (No hardcoded fake participants)
+  const [callParticipants, setCallParticipants] = useState<UserAccount[]>([]);
+  const [callHost, setCallHost] = useState<UserAccount | null>(null);
+
+  // Incoming Call Pop-up alert for team members
+  const [incomingCallAlert, setIncomingCallAlert] = useState<{
+    host: UserAccount;
+    project: Project;
+  } | null>(null);
+
+  // Call chat messages
   const [callMessages, setCallMessages] = useState<
     Array<{ id: string; sender: string; role: string; text: string; time: string }>
-  >([
-    {
-      id: 'm1',
-      sender: 'Julian Vance',
-      role: 'reviewer',
-      text: 'Checking the revised metabolic claims on slide 4 now.',
-      time: '11:42 AM',
-    },
-    {
-      id: 'm2',
-      sender: 'Maya Lin',
-      role: 'creator',
-      text: 'Great, I aligned all percentages with the approved clinical dataset.',
-      time: '11:43 AM',
-    },
-  ]);
+  >([]);
   const [newCallMsg, setNewCallMsg] = useState('');
-  const screenShareVideoRef = useRef<HTMLVideoElement>(null);
-  const localStreamRef = useRef<MediaStream | null>(null);
-
-  // Live presence ticker simulation
-  const [liveBeacons, setLiveBeacons] = useState<Array<{ name: string; action: string; time: string }>>([
-    { name: 'Maya Lin', action: 'edited headline in Draft #2', time: 'Just now' },
-    { name: 'Julian Vance', action: 'validated Journal citation #LH-2024', time: '2m ago' },
-  ]);
 
   const selectedProject =
     projects.find((p) => p.id === selectedProjectId) || projects[0] || null;
 
-  // Filter creators and reviewers from teamMembers
-  const creators = teamMembers.filter((m) => m.role === 'creator');
-  const reviewers = teamMembers.filter((m) => m.role === 'reviewer' || m.role === 'manager');
+  // Cleanup media streams on unmount
+  useEffect(() => {
+    return () => {
+      if (camStream) camStream.getTracks().forEach((t) => t.stop());
+      if (screenStream) screenStream.getTracks().forEach((t) => t.stop());
+    };
+  }, [camStream, screenStream]);
 
+  // Status configuration
   const statusConfig: Record<
     ProjectStatus,
     { label: string; bg: string; text: string; border: string; stepIdx: number }
@@ -164,7 +161,209 @@ export const CollaborationHub: React.FC<CollaborationHubProps> = ({
     'completed',
   ];
 
-  // Handle stage advancement
+  // ==========================================
+  // REAL WEBCAM & CALL CONTROLS
+  // ==========================================
+  const handleStartOrJoinCall = async () => {
+    if (isInCall) {
+      handleEndCall();
+      return;
+    }
+
+    setIsInCall(true);
+    setActiveTab('huddle');
+    setCallHost(currentUser);
+    setCallParticipants([currentUser]);
+    setMediaNotice(null);
+
+    // Add initial system message
+    setCallMessages([
+      {
+        id: `sys_${Date.now()}`,
+        sender: 'System',
+        role: 'system',
+        text: `${currentUser.name} started the review huddle for "${selectedProject?.title || 'Project'}".`,
+        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      },
+    ]);
+
+    // Request actual camera & mic access
+    try {
+      if (typeof navigator !== 'undefined' && navigator.mediaDevices?.getUserMedia) {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: true,
+          audio: true,
+        });
+        setCamStream(stream);
+        setIsCamActive(true);
+        setIsMicActive(true);
+      } else {
+        setMediaNotice('Camera access is not supported by your browser environment.');
+      }
+    } catch (err: any) {
+      console.warn('Webcam/mic access error:', err);
+      setMediaNotice('Camera permission was denied or device not found. Audio/visual avatar fallback enabled.');
+      setIsCamActive(false);
+    }
+
+    onLogAudit(
+      'Live Huddle Started',
+      `${currentUser.name} opened team call for "${selectedProject?.title || 'Project'}"`,
+      'collaboration'
+    );
+  };
+
+  const handleEndCall = () => {
+    if (camStream) {
+      camStream.getTracks().forEach((track) => track.stop());
+      setCamStream(null);
+    }
+    if (screenStream) {
+      screenStream.getTracks().forEach((track) => track.stop());
+      setScreenStream(null);
+    }
+    setIsScreenSharing(false);
+    setIsInCall(false);
+    setCallParticipants([]);
+    setCallHost(null);
+    setMediaNotice(null);
+  };
+
+  const handleToggleCam = () => {
+    if (camStream) {
+      const videoTracks = camStream.getVideoTracks();
+      videoTracks.forEach((t) => (t.enabled = !isCamActive));
+      setIsCamActive(!isCamActive);
+    } else {
+      setIsCamActive(!isCamActive);
+    }
+  };
+
+  const handleToggleMic = () => {
+    if (camStream) {
+      const audioTracks = camStream.getAudioTracks();
+      audioTracks.forEach((t) => (t.enabled = !isMicActive));
+      setIsMicActive(!isMicActive);
+    } else {
+      setIsMicActive(!isMicActive);
+    }
+  };
+
+  // ==========================================
+  // REAL SCREEN SHARE CONTROLS
+  // ==========================================
+  const handleToggleScreenShare = async () => {
+    if (isScreenSharing) {
+      if (screenStream) {
+        screenStream.getTracks().forEach((track) => track.stop());
+        setScreenStream(null);
+      }
+      setIsScreenSharing(false);
+      return;
+    }
+
+    try {
+      if (typeof navigator !== 'undefined' && navigator.mediaDevices?.getDisplayMedia) {
+        const stream = await navigator.mediaDevices.getDisplayMedia({
+          video: true,
+          audio: false,
+        });
+        setScreenStream(stream);
+        setIsScreenSharing(true);
+        setMediaNotice(null);
+
+        // When user stops sharing via browser bar
+        stream.getVideoTracks()[0].onended = () => {
+          setScreenStream(null);
+          setIsScreenSharing(false);
+        };
+      } else {
+        setMediaNotice('Screen capture API is not supported in this browser.');
+      }
+    } catch (err: any) {
+      console.warn('Screen share error or dismissed:', err);
+      setMediaNotice('Screen sharing request was cancelled or dismissed.');
+      setIsScreenSharing(false);
+    }
+  };
+
+  // Invite another team member to join the call
+  const handleInviteMemberToCall = (member: UserAccount) => {
+    if (callParticipants.some((p) => p.id === member.id)) return;
+    setCallParticipants((prev) => [...prev, member]);
+    setCallMessages((prev) => [
+      ...prev,
+      {
+        id: `sys_${Date.now()}`,
+        sender: 'System',
+        role: 'system',
+        text: `${member.name} (${member.role}) joined the huddle.`,
+        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      },
+    ]);
+  };
+
+  // Simulate receiving incoming call from another member
+  const handleSimulateIncomingCall = (member: UserAccount) => {
+    if (!selectedProject) return;
+    setIncomingCallAlert({
+      host: member,
+      project: selectedProject,
+    });
+  };
+
+  // Accept incoming call
+  const handleAcceptIncomingCall = () => {
+    if (!incomingCallAlert) return;
+    setIsInCall(true);
+    setActiveTab('huddle');
+    setCallHost(incomingCallAlert.host);
+    setCallParticipants([incomingCallAlert.host, currentUser]);
+    setIncomingCallAlert(null);
+
+    setCallMessages([
+      {
+        id: `sys_${Date.now()}`,
+        sender: 'System',
+        role: 'system',
+        text: `${currentUser.name} accepted call invite from ${incomingCallAlert.host.name}.`,
+        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      },
+    ]);
+
+    // Request webcam
+    if (navigator?.mediaDevices?.getUserMedia) {
+      navigator.mediaDevices
+        .getUserMedia({ video: true, audio: true })
+        .then((stream) => {
+          setCamStream(stream);
+          setIsCamActive(true);
+          setIsMicActive(true);
+        })
+        .catch(() => {
+          setIsCamActive(false);
+        });
+    }
+  };
+
+  // Send Huddle In-Call message
+  const handleSendCallMsg = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newCallMsg.trim()) return;
+    setCallMessages((prev) => [
+      ...prev,
+      {
+        id: `m_${Date.now()}`,
+        sender: currentUser.name,
+        role: currentUser.role,
+        text: newCallMsg.trim(),
+        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      },
+    ]);
+    setNewCallMsg('');
+  };
+
+  // Stage advancement
   const handleAdvanceStage = (nextStatus: ProjectStatus) => {
     if (!selectedProject) return;
     const progressMap: Record<ProjectStatus, number> = {
@@ -199,7 +398,7 @@ export const CollaborationHub: React.FC<CollaborationHubProps> = ({
     );
   };
 
-  // Handle Milestone Toggle
+  // Milestone toggle
   const handleToggleMilestone = (milestoneId: string) => {
     if (!selectedProject) return;
     const updatedMilestones = selectedProject.milestones.map((m) => {
@@ -233,59 +432,11 @@ export const CollaborationHub: React.FC<CollaborationHubProps> = ({
       authorRole: currentUser.role,
       timestamp: new Date().toISOString(),
       changeType: 'status_change',
-      description: `Toggled milestone completion status in "${selectedProject.title}".`,
+      description: `Updated milestone status in "${selectedProject.title}".`,
     });
   };
 
-  // Handle Screen Share Trigger
-  const handleToggleScreenShare = async () => {
-    if (!isScreenSharing) {
-      try {
-        if (navigator.mediaDevices && navigator.mediaDevices.getDisplayMedia) {
-          const stream = await navigator.mediaDevices.getDisplayMedia({ video: true });
-          localStreamRef.current = stream;
-          if (screenShareVideoRef.current) {
-            screenShareVideoRef.current.srcObject = stream;
-            screenShareVideoRef.current.play();
-          }
-          setIsScreenSharing(true);
-          stream.getVideoTracks()[0].onended = () => {
-            setIsScreenSharing(false);
-          };
-        } else {
-          setIsScreenSharing(true);
-        }
-      } catch (err) {
-        console.warn('Screen share cancelled or not permitted:', err);
-        setIsScreenSharing(true);
-      }
-    } else {
-      if (localStreamRef.current) {
-        localStreamRef.current.getTracks().forEach((track) => track.stop());
-        localStreamRef.current = null;
-      }
-      setIsScreenSharing(false);
-    }
-  };
-
-  // Send Huddle In-Call message
-  const handleSendCallMsg = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newCallMsg.trim()) return;
-    setCallMessages((prev) => [
-      ...prev,
-      {
-        id: `m_${Date.now()}`,
-        sender: currentUser.name,
-        role: currentUser.role,
-        text: newCallMsg.trim(),
-        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      },
-    ]);
-    setNewCallMsg('');
-  };
-
-  // Handle Create Project
+  // Create project
   const handleCreateProject = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newTitle.trim()) return;
@@ -294,7 +445,7 @@ export const CollaborationHub: React.FC<CollaborationHubProps> = ({
       id: `proj_${Date.now()}`,
       orgId: currentUser.orgId,
       title: newTitle.trim(),
-      description: newDesc.trim() || 'Multi-stakeholder brand compliance project.',
+      description: newDesc.trim() || 'Brand compliance project.',
       status: 'just_started',
       progressPercent: 10,
       startDate: new Date().toISOString().split('T')[0],
@@ -303,7 +454,7 @@ export const CollaborationHub: React.FC<CollaborationHubProps> = ({
       assignedReviewers: selectedReviewerIds.length > 0 ? selectedReviewerIds : ['usr_reviewer'],
       submissionIds: [],
       channels: newChannels.split(',').map((c) => c.trim()).filter(Boolean),
-      tags: ['Cross-Functional', 'New Initiative'],
+      tags: ['Cross-Functional'],
       milestones: [
         {
           id: `m_${Date.now()}_1`,
@@ -314,15 +465,15 @@ export const CollaborationHub: React.FC<CollaborationHubProps> = ({
         },
         {
           id: `m_${Date.now()}_2`,
-          title: 'Drafting & Multi-Factor Review',
-          description: 'Run automated AI checks for spelling, tone, and WCAG contrast.',
+          title: 'Drafting & AI Checks',
+          description: 'Automated AI checks for spelling, tone, and WCAG contrast.',
           status: 'pending',
           targetDate: newDeadline,
         },
         {
           id: `m_${Date.now()}_3`,
-          title: 'Executive Sign-Off & Distribution',
-          description: 'Grant cryptographic signature and sync to connected platforms.',
+          title: 'Sign-Off & Channel Distribution',
+          description: 'Certified sign-off and push to connected platforms.',
           status: 'pending',
           targetDate: newDeadline,
         },
@@ -343,35 +494,70 @@ export const CollaborationHub: React.FC<CollaborationHubProps> = ({
       authorRole: currentUser.role,
       timestamp: new Date().toISOString(),
       changeType: 'status_change',
-      description: `Created new project "${newProj.title}" with ${selectedCreatorIds.length} creators and ${selectedReviewerIds.length} reviewers.`,
+      description: `Created project "${newProj.title}".`,
     });
-
-    onLogAudit('Project Created', `Initiated "${newProj.title}"`, 'collaboration');
   };
 
-  // Filter change records for current project
   const projectChanges = changeRecords.filter(
     (c) => !selectedProject || c.projectId === selectedProject.id
   );
 
   return (
     <div className="space-y-6">
+      {/* INCOMING CALL POP-UP NOTIFICATION BANNER */}
+      {incomingCallAlert && (
+        <div className="p-4 rounded-2xl bg-[#3C311F] text-white shadow-xl flex items-center justify-between border border-sand-600 animate-fadeIn">
+          <div className="flex items-center gap-3">
+            <div className="h-10 w-10 rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center shrink-0">
+              <PhoneCall className="h-5 w-5 animate-bounce" />
+            </div>
+            <div>
+              <div className="text-xs font-bold flex items-center gap-2">
+                <span>Incoming Review Call:</span>
+                <span className="text-amber-300 font-semibold">{incomingCallAlert.host.name}</span>
+                <span className="text-[10px] uppercase px-1.5 py-0.2 rounded bg-white/20">
+                  {incomingCallAlert.host.role}
+                </span>
+              </div>
+              <div className="text-[11px] text-sand-300">
+                Project: {incomingCallAlert.project.title}
+              </div>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleAcceptIncomingCall}
+              className="px-4 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition-all shadow-sm"
+            >
+              Join Call
+            </button>
+            <button
+              onClick={() => setIncomingCallAlert(null)}
+              className="px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-xs text-sand-200 font-medium transition-all"
+            >
+              Dismiss
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* 1. TOP HEADER & PROJECT SELECTOR */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 p-5 rounded-2xl bg-white border border-sand-300 shadow-xs">
         <div className="space-y-1">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2.5">
             <span className="p-2 rounded-xl bg-sand-100 text-[#3C311F]">
               <FolderKanban className="h-5 w-5" />
             </span>
             <div>
-              <h2 className="text-lg font-serif font-bold text-sand-950 flex items-center gap-2">
+              <h2 className="text-base sm:text-lg font-serif font-bold text-sand-950 flex items-center gap-2">
                 Collaboration Hub
                 <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300">
-                  Live Multi-User Sync
+                  Team Workspace
                 </span>
               </h2>
               <p className="text-xs text-sand-600">
-                Manage concurrent projects, track granular author edits, and huddle live with video and screen share.
+                Manage projects, track author changes, and start live review calls with screen sharing.
               </p>
             </div>
           </div>
@@ -379,12 +565,8 @@ export const CollaborationHub: React.FC<CollaborationHubProps> = ({
 
         {/* Action Controls */}
         <div className="flex items-center gap-2.5 flex-wrap">
-          {/* Quick Huddle Call Trigger */}
           <button
-            onClick={() => {
-              setIsInCall(!isInCall);
-              if (!isInCall) setActiveTab('huddle');
-            }}
+            onClick={handleStartOrJoinCall}
             className={`px-3.5 py-2 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all shadow-xs ${
               isInCall
                 ? 'bg-rose-600 hover:bg-rose-700 text-white animate-pulse'
@@ -394,17 +576,16 @@ export const CollaborationHub: React.FC<CollaborationHubProps> = ({
             {isInCall ? (
               <>
                 <PhoneOff className="h-3.5 w-3.5" />
-                Leave Call (Live)
+                Leave Call
               </>
             ) : (
               <>
                 <Video className="h-3.5 w-3.5" />
-                Join Team Huddle
+                Start Live Call
               </>
             )}
           </button>
 
-          {/* New Project Button */}
           <button
             onClick={() => setIsNewProjectModalOpen(true)}
             className="px-3.5 py-2 rounded-xl bg-sand-100 hover:bg-sand-200 text-sand-900 border border-sand-300 text-xs font-semibold flex items-center gap-1.5 transition-all shadow-2xs"
@@ -415,12 +596,12 @@ export const CollaborationHub: React.FC<CollaborationHubProps> = ({
         </div>
       </div>
 
-      {/* 2. MULTI-PROJECTS SELECTOR CAROUSEL / STRIP */}
+      {/* 2. MULTI-PROJECTS SELECTOR CAROUSEL */}
       <div className="space-y-2">
         <div className="flex items-center justify-between text-xs font-bold text-sand-700 uppercase tracking-wider px-1">
-          <span>Active Team Projects ({projects.length})</span>
+          <span>Active Projects ({projects.length})</span>
           <span className="text-[11px] font-normal text-sand-500 lowercase">
-            click a project to inspect timeline & edits
+            click a project to switch view
           </span>
         </div>
 
@@ -438,7 +619,6 @@ export const CollaborationHub: React.FC<CollaborationHubProps> = ({
                     : 'bg-sand-50/70 border-sand-200 hover:bg-white hover:border-sand-300 shadow-2xs'
                 }`}
               >
-                {/* Top status & progress */}
                 <div className="flex items-center justify-between gap-2 mb-2">
                   <span
                     className={`text-[9px] uppercase font-bold px-2 py-0.5 rounded-full border ${status.bg} ${status.text} ${status.border}`}
@@ -450,38 +630,18 @@ export const CollaborationHub: React.FC<CollaborationHubProps> = ({
                   </span>
                 </div>
 
-                <h3 className="font-serif font-bold text-xs sm:text-sm text-sand-950 truncate mb-1" title={proj.title}>
+                <h3 className="font-serif font-bold text-sm text-sand-950 truncate mb-1">
                   {proj.title}
                 </h3>
-                <p className="text-[11px] text-sand-600 line-clamp-2 leading-relaxed mb-3">
+                <p className="text-xs text-sand-600 line-clamp-1 mb-3">
                   {proj.description}
                 </p>
 
-                {/* Progress bar */}
-                <div className="h-1.5 w-full bg-sand-200 rounded-full overflow-hidden mb-2.5">
+                <div className="h-1.5 w-full bg-sand-200 rounded-full overflow-hidden">
                   <div
-                    className="h-full bg-[#3C311F] rounded-full transition-all duration-500"
+                    className="h-full bg-[#3C311F] rounded-full transition-all"
                     style={{ width: `${proj.progressPercent}%` }}
                   />
-                </div>
-
-                {/* Team Avatars & Deadline */}
-                <div className="flex items-center justify-between text-[10px] text-sand-500 pt-1 border-t border-sand-100">
-                  <div className="flex items-center -space-x-1.5">
-                    {proj.assignedCreators.concat(proj.assignedReviewers).slice(0, 3).map((uid, i) => (
-                      <span
-                        key={i}
-                        className="h-5 w-5 rounded-full bg-sand-300 text-[9px] font-bold text-sand-900 border border-white flex items-center justify-center uppercase shadow-2xs"
-                        title={teamMembers.find((m) => m.id === uid)?.name || 'Member'}
-                      >
-                        {(teamMembers.find((m) => m.id === uid)?.name || 'M').charAt(0)}
-                      </span>
-                    ))}
-                  </div>
-                  <span className="flex items-center gap-1 font-mono">
-                    <Calendar className="h-3 w-3 text-sand-400" />
-                    {proj.targetDeadline}
-                  </span>
                 </div>
               </div>
             );
@@ -489,19 +649,19 @@ export const CollaborationHub: React.FC<CollaborationHubProps> = ({
         </div>
       </div>
 
-      {/* 3. ACTIVE PROJECT WORKBENCH */}
+      {/* 3. SELECTED PROJECT DETAILS & SUBTABS */}
       {selectedProject && (
-        <div className="bg-white rounded-2xl border border-sand-300 shadow-xs overflow-hidden">
+        <div className="rounded-2xl bg-white border border-sand-300 shadow-xs overflow-hidden">
           {/* Project Details Banner */}
-          <div className="p-5 border-b border-sand-200 bg-sand-50/50 space-y-3">
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
-              <div>
-                <div className="flex items-center gap-2 mb-1 flex-wrap">
+          <div className="p-5 border-b border-sand-200 bg-sand-50/40 space-y-3">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="space-y-1">
+                <div className="flex items-center gap-2">
                   <h3 className="text-base sm:text-lg font-serif font-bold text-sand-950">
                     {selectedProject.title}
                   </h3>
                   <span
-                    className={`text-[10px] uppercase font-bold px-2.5 py-0.5 rounded-full border ${
+                    className={`text-[10px] uppercase font-bold px-2 py-0.5 rounded-full border ${
                       statusConfig[selectedProject.status].bg
                     } ${statusConfig[selectedProject.status].text} ${
                       statusConfig[selectedProject.status].border
@@ -517,7 +677,7 @@ export const CollaborationHub: React.FC<CollaborationHubProps> = ({
 
               {/* Fast Stage Advance Control */}
               <div className="flex items-center gap-2 shrink-0">
-                <span className="text-[11px] font-bold text-sand-600">Advance Stage:</span>
+                <span className="text-[11px] font-bold text-sand-600">Stage:</span>
                 <select
                   value={selectedProject.status}
                   onChange={(e) => handleAdvanceStage(e.target.value as ProjectStatus)}
@@ -532,7 +692,6 @@ export const CollaborationHub: React.FC<CollaborationHubProps> = ({
               </div>
             </div>
 
-            {/* Channels & Team Chips */}
             <div className="flex flex-wrap items-center gap-2 pt-1 text-xs">
               <span className="text-sand-500 font-medium">Channels:</span>
               {selectedProject.channels.map((ch, idx) => (
@@ -543,13 +702,9 @@ export const CollaborationHub: React.FC<CollaborationHubProps> = ({
                   {ch}
                 </span>
               ))}
-
               <span className="text-sand-300">|</span>
-
-              <span className="text-sand-500 font-medium">Assigned Team:</span>
-              <span className="text-[11px] font-semibold text-sand-800">
-                {selectedProject.assignedCreators.length} Creator(s), {selectedProject.assignedReviewers.length} Reviewer(s)
-              </span>
+              <span className="text-sand-500 font-medium">Deadline:</span>
+              <span className="text-[11px] font-mono text-sand-700">{selectedProject.targetDeadline}</span>
             </div>
           </div>
 
@@ -564,7 +719,7 @@ export const CollaborationHub: React.FC<CollaborationHubProps> = ({
               }`}
             >
               <Clock className="h-3.5 w-3.5" />
-              Project Timeline & Milestones
+              Timeline & Milestones
             </button>
 
             <button
@@ -576,7 +731,7 @@ export const CollaborationHub: React.FC<CollaborationHubProps> = ({
               }`}
             >
               <History className="h-3.5 w-3.5" />
-              Author Change Tracking ({projectChanges.length})
+              Author Changes ({projectChanges.length})
             </button>
 
             <button
@@ -603,57 +758,51 @@ export const CollaborationHub: React.FC<CollaborationHubProps> = ({
               }`}
             >
               <Users className="h-3.5 w-3.5" />
-              Team Roster & Roles
+              Team Roster ({teamMembers.length})
             </button>
           </div>
 
-          {/* TAB 1: INTERACTIVE PROJECT TIMELINE & MILESTONES */}
+          {/* TAB 1: TIMELINE */}
           {activeTab === 'timeline' && (
             <div className="p-6 space-y-6">
-              {/* Visual Stage Progress Stepper */}
-              <div className="space-y-2">
-                <div className="text-xs font-bold uppercase tracking-wider text-sand-700">
-                  Project Lifecycle Stage
-                </div>
+              {/* Stepper */}
+              <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+                {timelineStages.map((st, i) => {
+                  const currentIdx = statusConfig[selectedProject.status].stepIdx;
+                  const isPassed = i <= currentIdx;
+                  const isCurrent = i === currentIdx;
 
-                <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 pt-1">
-                  {timelineStages.map((st, i) => {
-                    const currentIdx = statusConfig[selectedProject.status].stepIdx;
-                    const isPassed = i <= currentIdx;
-                    const isCurrent = i === currentIdx;
-
-                    return (
-                      <div
-                        key={st}
-                        onClick={() => handleAdvanceStage(st)}
-                        className={`cursor-pointer p-3 rounded-xl border transition-all text-center relative ${
-                          isCurrent
-                            ? 'bg-[#3C311F] text-white border-[#3C311F] shadow-xs'
-                            : isPassed
-                            ? 'bg-emerald-50 text-emerald-900 border-emerald-300'
-                            : 'bg-sand-50/50 text-sand-500 border-sand-200'
-                        }`}
-                      >
-                        <div className="text-[10px] font-mono font-bold mb-0.5 opacity-80">
-                          STAGE 0{i + 1}
-                        </div>
-                        <div className="text-xs font-bold truncate">
-                          {statusConfig[st].label}
-                        </div>
-                        {isPassed && !isCurrent && (
-                          <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600 mx-auto mt-1" />
-                        )}
+                  return (
+                    <div
+                      key={st}
+                      onClick={() => handleAdvanceStage(st)}
+                      className={`cursor-pointer p-3 rounded-xl border transition-all text-center relative ${
+                        isCurrent
+                          ? 'bg-[#3C311F] text-white border-[#3C311F] shadow-xs'
+                          : isPassed
+                          ? 'bg-emerald-50 text-emerald-900 border-emerald-300'
+                          : 'bg-sand-50/50 text-sand-500 border-sand-200'
+                      }`}
+                    >
+                      <div className="text-[10px] font-mono font-bold mb-0.5 opacity-80">
+                        STAGE 0{i + 1}
                       </div>
-                    );
-                  })}
-                </div>
+                      <div className="text-xs font-bold truncate">
+                        {statusConfig[st].label}
+                      </div>
+                      {isPassed && !isCurrent && (
+                        <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600 mx-auto mt-1" />
+                      )}
+                    </div>
+                  );
+                })}
               </div>
 
-              {/* Interactive Milestones Checklist */}
-              <div className="space-y-3 pt-4 border-t border-sand-200">
+              {/* Milestones Checklist */}
+              <div className="space-y-3 pt-3 border-t border-sand-200">
                 <div className="flex items-center justify-between">
                   <h4 className="text-xs font-bold uppercase tracking-wider text-sand-700">
-                    Milestones & Approval Gates ({selectedProject.milestones.length})
+                    Project Milestones ({selectedProject.milestones.length})
                   </h4>
                   <span className="text-xs font-bold text-sand-700 font-mono">
                     {selectedProject.milestones.filter((m) => m.status === 'completed').length} of{' '}
@@ -696,26 +845,15 @@ export const CollaborationHub: React.FC<CollaborationHubProps> = ({
                             </p>
                             {isDone && m.completedBy && (
                               <span className="text-[10px] text-emerald-800 font-medium block pt-0.5">
-                                Verified by {m.completedBy} on {m.completedAt}
+                                Completed by {m.completedBy}
                               </span>
                             )}
                           </div>
                         </div>
 
-                        <div className="text-right shrink-0">
-                          <span
-                            className={`text-[10px] uppercase font-bold px-2 py-0.5 rounded-full border ${
-                              isDone
-                                ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
-                                : 'bg-amber-50 text-amber-800 border-amber-300'
-                            }`}
-                          >
-                            {isDone ? 'Completed' : 'Pending'}
-                          </span>
-                          <span className="text-[10px] text-sand-500 font-mono block mt-1">
-                            Due {m.targetDate}
-                          </span>
-                        </div>
+                        <span className="text-[11px] font-mono text-sand-500 shrink-0">
+                          {m.targetDate}
+                        </span>
                       </div>
                     );
                   })}
@@ -724,124 +862,72 @@ export const CollaborationHub: React.FC<CollaborationHubProps> = ({
             </div>
           )}
 
-          {/* TAB 2: DETAILED AUTHOR CHANGE TRACKING ("WHO CHANGED WHAT") */}
+          {/* TAB 2: AUTHOR CHANGES */}
           {activeTab === 'changes' && (
             <div className="p-6 space-y-4">
               <div className="flex items-center justify-between pb-2 border-b border-sand-200">
-                <div>
-                  <h4 className="text-xs font-bold uppercase tracking-wider text-sand-800">
-                    Team Audit Changelog & Version Diff
-                  </h4>
-                  <p className="text-xs text-sand-600">
-                    Transparent log of every content alteration, guideline override, and status promotion.
-                  </p>
-                </div>
-                <span className="text-xs font-mono font-bold text-sand-500">
-                  {projectChanges.length} Entries Recorded
+                <h4 className="text-xs font-bold uppercase tracking-wider text-sand-800">
+                  Granular Change History
+                </h4>
+                <span className="text-[11px] text-sand-500 font-mono">
+                  {projectChanges.length} Recorded Changes
                 </span>
               </div>
 
               {projectChanges.length === 0 ? (
-                <div className="p-8 text-center bg-sand-50/50 rounded-xl border border-sand-200 text-xs text-sand-500">
-                  No content changes recorded yet for this project.
+                <div className="p-8 text-center text-xs text-sand-500">
+                  No author changes recorded for this project yet.
                 </div>
               ) : (
                 <div className="space-y-3">
-                  {projectChanges.map((change) => {
-                    const badgeTypeMap: Record<
-                      string,
-                      { label: string; bg: string; text: string }
-                    > = {
-                      text_edit: { label: 'Content Edit', bg: 'bg-blue-100', text: 'text-blue-900' },
-                      guideline_override: { label: 'Claims Calibration', bg: 'bg-purple-100', text: 'text-purple-900' },
-                      status_change: { label: 'Workflow Advance', bg: 'bg-emerald-100', text: 'text-emerald-900' },
-                      media_upload: { label: 'Media Upload', bg: 'bg-amber-100', text: 'text-amber-900' },
-                      comment: { label: 'Reviewer Note', bg: 'bg-stone-100', text: 'text-stone-900' },
-                    };
-                    const typeBadge = badgeTypeMap[change.changeType] || {
-                      label: change.changeType,
-                      bg: 'bg-sand-100',
-                      text: 'text-sand-900',
-                    };
-
-                    return (
-                      <div
-                        key={change.id}
-                        className="p-4 rounded-xl border border-sand-200 bg-white shadow-2xs space-y-3"
-                      >
-                        {/* Header: Member info & timestamp */}
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="flex items-center gap-2.5">
-                            <div className="h-8 w-8 rounded-full bg-[#3C311F] text-sand-50 flex items-center justify-center font-bold text-xs uppercase shadow-xs">
-                              {change.authorName.charAt(0)}
-                            </div>
-                            <div>
-                              <div className="text-xs font-bold text-sand-950 flex items-center gap-1.5">
-                                {change.authorName}
-                                <span className="text-[10px] uppercase font-bold px-1.5 py-0.2 rounded bg-sand-100 text-sand-700">
-                                  {change.authorRole}
-                                </span>
-                              </div>
-                              <div className="text-[10px] text-sand-500 font-mono">
-                                {new Date(change.timestamp).toLocaleString()}
-                              </div>
-                            </div>
+                  {projectChanges.map((change) => (
+                    <div
+                      key={change.id}
+                      className="p-4 rounded-xl border border-sand-200 bg-white shadow-2xs space-y-2"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex items-center gap-2">
+                          <div className="h-7 w-7 rounded-full bg-[#3C311F] text-sand-50 flex items-center justify-center font-bold text-xs uppercase">
+                            {change.authorName.charAt(0)}
                           </div>
-
-                          <div className="flex items-center gap-2">
-                            <span
-                              className={`text-[10px] uppercase font-bold px-2 py-0.5 rounded-full ${typeBadge.bg} ${typeBadge.text}`}
-                            >
-                              {typeBadge.label}
-                            </span>
-                            {change.charDelta !== undefined && change.charDelta !== 0 && (
-                              <span
-                                className={`text-[10px] font-mono font-bold px-1.5 py-0.5 rounded ${
-                                  change.charDelta > 0
-                                    ? 'bg-emerald-50 text-emerald-800'
-                                    : 'bg-rose-50 text-rose-800'
-                                }`}
-                              >
-                                {change.charDelta > 0 ? `+${change.charDelta}` : change.charDelta} chars
+                          <div>
+                            <div className="text-xs font-bold text-sand-950 flex items-center gap-1.5">
+                              {change.authorName}
+                              <span className="text-[10px] uppercase font-bold px-1.5 py-0.2 rounded bg-sand-100 text-sand-700">
+                                {change.authorRole}
                               </span>
-                            )}
+                            </div>
+                            <div className="text-[10px] text-sand-500 font-mono">
+                              {new Date(change.timestamp).toLocaleString()}
+                            </div>
                           </div>
                         </div>
 
-                        {/* Description */}
-                        <p className="text-xs text-sand-800 font-medium">
-                          {change.description}
-                        </p>
-
-                        {/* Before & After Diff Box */}
-                        {(change.contentSnippetBefore || change.contentSnippetAfter) && (
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-2 pt-1">
-                            {change.contentSnippetBefore && (
-                              <div className="p-2.5 rounded-lg bg-rose-50/60 border border-rose-200 text-xs">
-                                <span className="text-[10px] font-bold text-rose-700 uppercase block mb-1">
-                                  Prior Version:
-                                </span>
-                                <span className="text-rose-950 line-through leading-relaxed whitespace-pre-wrap">
-                                  {change.contentSnippetBefore}
-                                </span>
-                              </div>
-                            )}
-
-                            {change.contentSnippetAfter && (
-                              <div className="p-2.5 rounded-lg bg-emerald-50/60 border border-emerald-200 text-xs">
-                                <span className="text-[10px] font-bold text-emerald-700 uppercase block mb-1">
-                                  Updated Content:
-                                </span>
-                                <span className="text-emerald-950 font-medium leading-relaxed whitespace-pre-wrap">
-                                  {change.contentSnippetAfter}
-                                </span>
-                              </div>
-                            )}
-                          </div>
-                        )}
+                        <span className="text-[10px] uppercase font-bold px-2 py-0.5 rounded-full bg-sand-100 text-sand-800">
+                          {change.changeType}
+                        </span>
                       </div>
-                    );
-                  })}
+
+                      <p className="text-xs text-sand-800 font-medium">
+                        {change.description}
+                      </p>
+
+                      {(change.contentSnippetBefore || change.contentSnippetAfter) && (
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-2 pt-1 text-xs">
+                          {change.contentSnippetBefore && (
+                            <div className="p-2.5 rounded-lg bg-rose-50/70 border border-rose-200 text-rose-950 line-through">
+                              {change.contentSnippetBefore}
+                            </div>
+                          )}
+                          {change.contentSnippetAfter && (
+                            <div className="p-2.5 rounded-lg bg-emerald-50/70 border border-emerald-200 text-emerald-950 font-medium">
+                              {change.contentSnippetAfter}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  ))}
                 </div>
               )}
             </div>
@@ -850,63 +936,87 @@ export const CollaborationHub: React.FC<CollaborationHubProps> = ({
           {/* TAB 3: LIVE HUDDLE, SCREEN SHARE, AUDIO & VIDEO CALL */}
           {activeTab === 'huddle' && (
             <div className="p-6 space-y-6">
+              {/* Media Notice / Fallback Warning */}
+              {mediaNotice && (
+                <div className="p-3.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-xs font-semibold flex items-center justify-between shadow-2xs">
+                  <span>{mediaNotice}</span>
+                  <button onClick={() => setMediaNotice(null)} className="font-bold">×</button>
+                </div>
+              )}
+
+              {/* Call Room Top Bar */}
               <div className="p-4 rounded-xl bg-sand-50 border border-sand-300 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div className="space-y-0.5">
                   <div className="flex items-center gap-2">
-                    <span className="h-2.5 w-2.5 rounded-full bg-rose-600 animate-ping" />
+                    {isInCall && <span className="h-2.5 w-2.5 rounded-full bg-rose-600 animate-ping" />}
                     <h4 className="text-xs font-bold uppercase tracking-wider text-sand-900">
-                      Live Collaborative Huddle Room
+                      Live Editorial Huddle Room
                     </h4>
                   </div>
                   <p className="text-xs text-sand-600">
-                    Real-time video & audio call with screen sharing for simultaneous editorial reviews.
+                    {isInCall
+                      ? `Active call on "${selectedProject.title}" with ${callParticipants.length} member(s).`
+                      : 'Real-time video call and screen sharing for joint editorial verification.'}
                   </p>
                 </div>
 
                 <div className="flex items-center gap-2">
                   <button
-                    onClick={() => setIsInCall(!isInCall)}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 shadow-xs transition-all ${
+                    onClick={handleStartOrJoinCall}
+                    className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-xs transition-all ${
                       isInCall
                         ? 'bg-rose-700 text-white hover:bg-rose-800'
                         : 'bg-[#3C311F] text-white hover:bg-[#2B2316]'
                     }`}
                   >
-                    {isInCall ? 'End Call' : 'Join Huddle Room'}
+                    {isInCall ? (
+                      <>
+                        <PhoneOff className="h-3.5 w-3.5" />
+                        End Call
+                      </>
+                    ) : (
+                      <>
+                        <Video className="h-3.5 w-3.5" />
+                        Join Huddle Room
+                      </>
+                    )}
                   </button>
                 </div>
               </div>
 
               {/* Main Call Grid & Screen Share Stage */}
-              <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-                {/* 2 Cols: Video Tiles & Screen Share */}
-                <div className="lg:col-span-2 space-y-3">
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+                {/* 2 Cols: Screen Share & Participant Tiles */}
+                <div className="lg:col-span-2 space-y-4">
                   {/* Screen Share Stage */}
-                  <div className="relative rounded-2xl bg-stone-900 border border-stone-800 overflow-hidden min-h-[300px] flex items-center justify-center text-center p-4">
-                    {isScreenSharing ? (
+                  <div className="relative rounded-2xl bg-stone-900 border border-stone-800 overflow-hidden min-h-[320px] flex items-center justify-center p-3">
+                    {isScreenSharing && screenStream ? (
                       <div className="w-full h-full flex flex-col items-center justify-center">
                         <video
-                          ref={screenShareVideoRef}
                           autoPlay
                           playsInline
+                          muted
+                          ref={(el) => {
+                            if (el && screenStream) el.srcObject = screenStream;
+                          }}
                           className="w-full max-h-[360px] object-contain rounded-lg"
                         />
                         <div className="absolute top-3 left-3 bg-stone-950/80 backdrop-blur-md px-3 py-1 rounded-full text-[11px] text-emerald-400 font-bold flex items-center gap-1.5 border border-emerald-500/30">
                           <Radio className="h-3 w-3 animate-pulse" />
-                          Screen Sharing Active: {currentUser.name}
+                          Screen Sharing Active
                         </div>
                       </div>
                     ) : (
-                      <div className="space-y-3 max-w-sm">
-                        <div className="h-16 w-16 rounded-2xl bg-stone-800 flex items-center justify-center text-sand-300 mx-auto border border-stone-700 shadow-md">
-                          <MonitorUp className="h-8 w-8" />
+                      <div className="space-y-3 max-w-sm text-center p-4">
+                        <div className="h-14 w-14 rounded-2xl bg-stone-800 flex items-center justify-center text-sand-300 mx-auto border border-stone-700 shadow-md">
+                          <MonitorUp className="h-7 w-7" />
                         </div>
                         <div>
                           <h5 className="text-sand-100 font-serif font-bold text-sm">
                             Presentation & Screen Share Stage
                           </h5>
                           <p className="text-xs text-stone-400 mt-1">
-                            Click &ldquo;Share Screen&rdquo; below to broadcast your document editor, video timeline, or Canva designs directly to team members.
+                            Share your active browser window, design tabs, or documentation with team members.
                           </p>
                         </div>
                         <button
@@ -914,114 +1024,155 @@ export const CollaborationHub: React.FC<CollaborationHubProps> = ({
                           disabled={!isInCall}
                           className="px-4 py-2 rounded-xl bg-sand-100 hover:bg-white text-sand-950 font-bold text-xs disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-xs"
                         >
-                          Start Screen Sharing
+                          {isScreenSharing ? 'Stop Screen Share' : 'Start Screen Sharing'}
                         </button>
                       </div>
                     )}
                   </div>
 
-                  {/* Participant Video Tiles */}
-                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                    {/* User 1: Current User */}
-                    <div className="relative rounded-xl bg-stone-800 border border-stone-700 aspect-video flex items-center justify-center overflow-hidden">
-                      {isVideoOn ? (
-                        <div className="text-center space-y-1">
-                          <div className="h-10 w-10 rounded-full bg-[#3C311F] text-sand-50 flex items-center justify-center font-bold text-xs mx-auto border border-sand-400">
-                            {currentUser.name.charAt(0)}
-                          </div>
-                          <div className="text-[10px] text-sand-200 font-bold">{currentUser.name} (You)</div>
-                        </div>
-                      ) : (
-                        <div className="text-stone-400 text-xs flex items-center gap-1">
-                          <VideoOff className="h-4 w-4" />
-                          Camera Off
-                        </div>
+                  {/* Dynamic Participant Video Tiles (No Hardcoded Mock Participants) */}
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between text-xs font-bold text-sand-700">
+                      <span>Call Participants ({callParticipants.length})</span>
+                      {isInCall && (
+                        <span className="text-[11px] text-emerald-700 font-semibold flex items-center gap-1">
+                          <CheckCircle2 className="h-3 w-3" />
+                          Active Room
+                        </span>
                       )}
-                      <div className="absolute bottom-2 left-2 flex items-center gap-1 bg-stone-900/80 px-1.5 py-0.5 rounded text-[9px] text-sand-200">
-                        {isMuted ? <MicOff className="h-2.5 w-2.5 text-rose-400" /> : <Mic className="h-2.5 w-2.5 text-emerald-400" />}
-                        <span>{currentUser.role}</span>
-                      </div>
                     </div>
 
-                    {/* User 2: Maya Lin (Creator) */}
-                    <div className="relative rounded-xl bg-stone-800 border border-stone-700 aspect-video flex items-center justify-center overflow-hidden">
-                      <div className="text-center space-y-1">
-                        <div className="h-10 w-10 rounded-full bg-emerald-800 text-sand-50 flex items-center justify-center font-bold text-xs mx-auto border border-emerald-400">
-                          M
-                        </div>
-                        <div className="text-[10px] text-sand-200 font-bold">Maya Lin</div>
+                    {callParticipants.length === 0 ? (
+                      <div className="p-6 rounded-xl border border-dashed border-sand-300 text-center text-xs text-sand-500">
+                        No participants currently in call. Click &ldquo;Join Huddle Room&rdquo; above to start.
                       </div>
-                      <div className="absolute bottom-2 left-2 flex items-center gap-1 bg-stone-900/80 px-1.5 py-0.5 rounded text-[9px] text-sand-200">
-                        <Mic className="h-2.5 w-2.5 text-emerald-400 animate-pulse" />
-                        <span>Creator</span>
-                      </div>
-                    </div>
+                    ) : (
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
+                        {callParticipants.map((member) => {
+                          const isMe = member.id === currentUser.id;
+                          return (
+                            <div
+                              key={member.id}
+                              className="relative rounded-xl bg-stone-800 border border-stone-700 aspect-video flex items-center justify-center overflow-hidden"
+                            >
+                              {/* Local user camera feed */}
+                              {isMe && isCamActive && camStream ? (
+                                <video
+                                  autoPlay
+                                  playsInline
+                                  muted
+                                  ref={(el) => {
+                                    if (el) el.srcObject = camStream;
+                                  }}
+                                  className="w-full h-full object-cover"
+                                />
+                              ) : (
+                                /* Fallback avatar */
+                                <div className="text-center space-y-1">
+                                  <div className="h-10 w-10 rounded-full bg-[#3C311F] text-sand-50 flex items-center justify-center font-bold text-xs mx-auto border border-sand-400">
+                                    {member.name.charAt(0)}
+                                  </div>
+                                  <div className="text-[10px] text-sand-200 font-bold">
+                                    {member.name} {isMe && '(You)'}
+                                  </div>
+                                </div>
+                              )}
 
-                    {/* User 3: Julian Vance (Reviewer) */}
-                    <div className="relative rounded-xl bg-stone-800 border border-stone-700 aspect-video flex items-center justify-center overflow-hidden">
-                      <div className="text-center space-y-1">
-                        <div className="h-10 w-10 rounded-full bg-amber-800 text-sand-50 flex items-center justify-center font-bold text-xs mx-auto border border-amber-400">
-                          J
-                        </div>
-                        <div className="text-[10px] text-sand-200 font-bold">Julian Vance</div>
+                              {/* Participant Status Badge */}
+                              <div className="absolute bottom-2 left-2 flex items-center gap-1 bg-stone-900/80 px-2 py-0.5 rounded text-[9px] text-sand-200 backdrop-blur-xs">
+                                {isMe ? (
+                                  isMicActive ? (
+                                    <Mic className="h-2.5 w-2.5 text-emerald-400" />
+                                  ) : (
+                                    <MicOff className="h-2.5 w-2.5 text-rose-400" />
+                                  )
+                                ) : (
+                                  <Mic className="h-2.5 w-2.5 text-emerald-400" />
+                                )}
+                                <span>{member.role}</span>
+                              </div>
+                            </div>
+                          );
+                        })}
                       </div>
-                      <div className="absolute bottom-2 left-2 flex items-center gap-1 bg-stone-900/80 px-1.5 py-0.5 rounded text-[9px] text-sand-200">
-                        <Mic className="h-2.5 w-2.5 text-emerald-400" />
-                        <span>Reviewer</span>
-                      </div>
-                    </div>
+                    )}
                   </div>
 
                   {/* Call Controls Bar */}
-                  <div className="p-3 rounded-xl bg-sand-100 border border-sand-300 flex items-center justify-center gap-3">
-                    <button
-                      onClick={() => setIsMuted(!isMuted)}
-                      className={`p-2.5 rounded-full border transition-all ${
-                        isMuted
-                          ? 'bg-rose-100 text-rose-800 border-rose-300'
-                          : 'bg-white text-sand-800 border-sand-300 hover:bg-sand-50'
-                      }`}
-                      title={isMuted ? 'Unmute' : 'Mute'}
-                    >
-                      {isMuted ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
-                    </button>
+                  {isInCall && (
+                    <div className="p-3 rounded-xl bg-sand-100 border border-sand-300 flex items-center justify-center gap-3">
+                      <button
+                        onClick={handleToggleMic}
+                        className={`p-2.5 rounded-full border transition-all ${
+                          !isMicActive
+                            ? 'bg-rose-100 text-rose-800 border-rose-300'
+                            : 'bg-white text-sand-800 border-sand-300 hover:bg-sand-50'
+                        }`}
+                        title={isMicActive ? 'Mute' : 'Unmute'}
+                      >
+                        {isMicActive ? <Mic className="h-4 w-4" /> : <MicOff className="h-4 w-4" />}
+                      </button>
 
-                    <button
-                      onClick={() => setIsVideoOn(!isVideoOn)}
-                      className={`p-2.5 rounded-full border transition-all ${
-                        !isVideoOn
-                          ? 'bg-rose-100 text-rose-800 border-rose-300'
-                          : 'bg-white text-sand-800 border-sand-300 hover:bg-sand-50'
-                      }`}
-                      title={isVideoOn ? 'Turn Camera Off' : 'Turn Camera On'}
-                    >
-                      {isVideoOn ? <Video className="h-4 w-4" /> : <VideoOff className="h-4 w-4" />}
-                    </button>
+                      <button
+                        onClick={handleToggleCam}
+                        className={`p-2.5 rounded-full border transition-all ${
+                          !isCamActive
+                            ? 'bg-rose-100 text-rose-800 border-rose-300'
+                            : 'bg-white text-sand-800 border-sand-300 hover:bg-sand-50'
+                        }`}
+                        title={isCamActive ? 'Turn Camera Off' : 'Turn Camera On'}
+                      >
+                        {isCamActive ? <Video className="h-4 w-4" /> : <VideoOff className="h-4 w-4" />}
+                      </button>
 
-                    <button
-                      onClick={handleToggleScreenShare}
-                      className={`px-3 py-2 rounded-xl text-xs font-bold border flex items-center gap-1.5 transition-all ${
-                        isScreenSharing
-                          ? 'bg-emerald-600 text-white border-emerald-700'
-                          : 'bg-white text-sand-800 border-sand-300 hover:bg-sand-50'
-                      }`}
-                    >
-                      <MonitorUp className="h-4 w-4" />
-                      {isScreenSharing ? 'Stop Sharing' : 'Share Screen'}
-                    </button>
+                      <button
+                        onClick={handleToggleScreenShare}
+                        className={`px-3 py-2 rounded-xl text-xs font-bold border flex items-center gap-1.5 transition-all ${
+                          isScreenSharing
+                            ? 'bg-emerald-600 text-white border-emerald-700'
+                            : 'bg-white text-sand-800 border-sand-300 hover:bg-sand-50'
+                        }`}
+                      >
+                        <MonitorUp className="h-4 w-4" />
+                        {isScreenSharing ? 'Stop Screen' : 'Share Screen'}
+                      </button>
 
-                    <button
-                      onClick={() => setIsInCall(false)}
-                      className="px-3.5 py-2 rounded-xl bg-rose-700 hover:bg-rose-800 text-white text-xs font-bold flex items-center gap-1 shadow-xs"
-                    >
-                      <PhoneOff className="h-4 w-4" />
-                      End
-                    </button>
-                  </div>
+                      <button
+                        onClick={handleEndCall}
+                        className="px-3.5 py-2 rounded-xl bg-rose-700 hover:bg-rose-800 text-white text-xs font-bold flex items-center gap-1 shadow-xs"
+                      >
+                        <PhoneOff className="h-4 w-4" />
+                        End Call
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Invite Other Team Members into Active Call */}
+                  {isInCall && (
+                    <div className="p-3.5 rounded-xl bg-sand-50 border border-sand-200 space-y-2">
+                      <div className="text-[11px] font-bold text-sand-700 uppercase tracking-wider">
+                        Invite Available Teammates:
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        {teamMembers
+                          .filter((m) => !callParticipants.some((p) => p.id === m.id))
+                          .map((member) => (
+                            <button
+                              key={member.id}
+                              onClick={() => handleInviteMemberToCall(member)}
+                              className="px-2.5 py-1 rounded-lg bg-white hover:bg-sand-100 border border-sand-300 text-sand-800 text-xs font-semibold flex items-center gap-1 transition-all shadow-2xs"
+                            >
+                              <UserPlus className="h-3 w-3 text-sand-600" />
+                              Add {member.name} ({member.role})
+                            </button>
+                          ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
 
-                {/* 1 Col: In-Call Collaborative Chat & Live Presence Notes */}
-                <div className="bg-sand-50/70 rounded-2xl border border-sand-300 p-4 flex flex-col justify-between h-[480px]">
+                {/* 1 Col: In-Call Team Chat & Live Notes */}
+                <div className="bg-sand-50/70 rounded-2xl border border-sand-300 p-4 flex flex-col justify-between h-[520px]">
                   <div className="space-y-3">
                     <div className="flex items-center justify-between pb-2 border-b border-sand-200">
                       <span className="text-xs font-bold uppercase tracking-wider text-sand-800 flex items-center gap-1.5">
@@ -1029,38 +1180,51 @@ export const CollaborationHub: React.FC<CollaborationHubProps> = ({
                         In-Call Team Notes
                       </span>
                       <span className="text-[10px] text-emerald-800 font-bold bg-emerald-100 px-2 py-0.5 rounded-full">
-                        3 Online
+                        {callParticipants.length} Connected
                       </span>
                     </div>
 
                     {/* Messages Scroll Area */}
-                    <div className="space-y-2.5 overflow-y-auto max-h-[340px] pr-1 text-xs">
-                      {callMessages.map((msg) => (
-                        <div key={msg.id} className="p-2.5 rounded-xl bg-white border border-sand-200 shadow-2xs space-y-1">
-                          <div className="flex items-center justify-between text-[10px]">
-                            <span className="font-bold text-sand-900">{msg.sender}</span>
-                            <span className="text-sand-400 font-mono">{msg.time}</span>
-                          </div>
-                          <p className="text-sand-700 leading-relaxed text-[11px]">{msg.text}</p>
+                    <div className="space-y-2.5 overflow-y-auto max-h-[380px] pr-1 text-xs">
+                      {callMessages.length === 0 ? (
+                        <div className="p-4 text-center text-xs text-sand-500">
+                          No messages yet. Chat in real time during the call.
                         </div>
-                      ))}
+                      ) : (
+                        callMessages.map((msg) => (
+                          <div
+                            key={msg.id}
+                            className={`p-2.5 rounded-xl border shadow-2xs space-y-1 ${
+                              msg.role === 'system'
+                                ? 'bg-amber-50/60 border-amber-200 text-amber-900 font-mono text-[11px]'
+                                : 'bg-white border-sand-200 text-sand-900'
+                            }`}
+                          >
+                            <div className="flex items-center justify-between text-[10px]">
+                              <span className="font-bold">{msg.sender}</span>
+                              <span className="text-sand-400 font-mono">{msg.time}</span>
+                            </div>
+                            <p className="leading-relaxed text-[11px]">{msg.text}</p>
+                          </div>
+                        ))
+                      )}
                     </div>
                   </div>
 
                   {/* Chat Input */}
-                  <form onSubmit={handleSendCallMsg} className="flex gap-2 pt-2 border-t border-sand-200">
+                  <form onSubmit={handleSendCallMsg} className="pt-2 flex gap-1.5">
                     <input
                       type="text"
-                      placeholder="Share timestamp or note..."
                       value={newCallMsg}
                       onChange={(e) => setNewCallMsg(e.target.value)}
-                      className="flex-1 text-xs p-2 rounded-lg border border-sand-300 bg-white"
+                      placeholder="Add meeting note..."
+                      className="flex-1 p-2 rounded-xl border border-sand-300 text-xs bg-white text-sand-900 focus:outline-none focus:ring-1 focus:ring-[#3C311F]"
                     />
                     <button
                       type="submit"
-                      className="px-3 py-2 rounded-lg bg-[#3C311F] text-white text-xs font-bold hover:bg-[#2B2316] shrink-0"
+                      className="px-3 py-2 rounded-xl bg-[#3C311F] text-white text-xs font-bold hover:bg-[#2B2316] transition-colors"
                     >
-                      <Send className="h-3 w-3" />
+                      Send
                     </button>
                   </form>
                 </div>
@@ -1068,179 +1232,135 @@ export const CollaborationHub: React.FC<CollaborationHubProps> = ({
             </div>
           )}
 
-          {/* TAB 4: TEAM ROSTER & MULTIPLE CREATORS / REVIEWERS */}
+          {/* TAB 4: TEAM ROSTER */}
           {activeTab === 'team' && (
-            <div className="p-6 space-y-6">
-              <div className="space-y-1">
+            <div className="p-6 space-y-4">
+              <div className="flex items-center justify-between pb-2 border-b border-sand-200">
                 <h4 className="text-xs font-bold uppercase tracking-wider text-sand-800">
-                  Project Stakeholders & Role Matrix
+                  Team Members & Permissions
                 </h4>
-                <p className="text-xs text-sand-600">
-                  Multiple creators draft and iterate on assets, while designated reviewers verify clinical accuracy and sign approvals.
-                </p>
+                <span className="text-xs text-sand-500 font-mono">
+                  {teamMembers.length} Members Registered
+                </span>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {/* Creators Column */}
-                <div className="p-4 rounded-xl border border-sand-300 bg-sand-50/60 space-y-3">
-                  <div className="flex items-center justify-between pb-2 border-b border-sand-200">
-                    <span className="text-xs font-bold uppercase text-sand-900 flex items-center gap-1.5">
-                      <FileEdit className="h-4 w-4 text-sand-700" />
-                      Assigned Creators
-                    </span>
-                    <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-sand-200 text-sand-800">
-                      Draft Authors
-                    </span>
-                  </div>
-
-                  <div className="space-y-2">
-                    {creators.map((c) => (
-                      <div
-                        key={c.id}
-                        className="p-3 rounded-lg bg-white border border-sand-200 flex items-center justify-between text-xs"
-                      >
-                        <div className="flex items-center gap-2">
-                          <div className="h-7 w-7 rounded-full bg-[#3C311F] text-sand-50 flex items-center justify-center font-bold text-xs uppercase">
-                            {c.name.charAt(0)}
-                          </div>
-                          <div>
-                            <div className="font-bold text-sand-900">{c.name}</div>
-                            <div className="text-[10px] text-sand-500">{c.email}</div>
-                          </div>
-                        </div>
-                        <span className="text-[10px] font-semibold text-emerald-700 flex items-center gap-1">
-                          <span className="h-2 w-2 rounded-full bg-emerald-500" />
-                          Online
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                {teamMembers.map((member) => (
+                  <div
+                    key={member.id}
+                    className="p-4 rounded-xl border border-sand-200 bg-white shadow-2xs space-y-2 flex flex-col justify-between"
+                  >
+                    <div className="flex items-start gap-3">
+                      <div className="h-9 w-9 rounded-full bg-[#3C311F] text-sand-50 flex items-center justify-center font-bold text-xs uppercase shrink-0">
+                        {member.name.charAt(0)}
+                      </div>
+                      <div className="space-y-0.5">
+                        <div className="text-xs font-bold text-sand-950">{member.name}</div>
+                        <div className="text-[11px] text-sand-500">{member.email}</div>
+                        <span className="inline-block text-[9px] uppercase font-bold px-2 py-0.5 rounded-full bg-sand-100 text-sand-800 border border-sand-200">
+                          {member.role}
                         </span>
                       </div>
-                    ))}
-                  </div>
-                </div>
+                    </div>
 
-                {/* Reviewers Column */}
-                <div className="p-4 rounded-xl border border-sand-300 bg-sand-50/60 space-y-3">
-                  <div className="flex items-center justify-between pb-2 border-b border-sand-200">
-                    <span className="text-xs font-bold uppercase text-sand-900 flex items-center gap-1.5">
-                      <Shield className="h-4 w-4 text-[#3C311F]" />
-                      Assigned Reviewers & Managers
-                    </span>
-                    <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-sand-200 text-sand-800">
-                      Compliance Certifiers
-                    </span>
-                  </div>
-
-                  <div className="space-y-2">
-                    {reviewers.map((r) => (
-                      <div
-                        key={r.id}
-                        className="p-3 rounded-lg bg-white border border-sand-200 flex items-center justify-between text-xs"
+                    <div className="pt-2 border-t border-sand-100 flex items-center justify-between">
+                      <button
+                        onClick={() => handleSimulateIncomingCall(member)}
+                        className="text-[11px] font-semibold text-sand-700 hover:text-sand-950 flex items-center gap-1"
                       >
-                        <div className="flex items-center gap-2">
-                          <div className="h-7 w-7 rounded-full bg-sand-800 text-sand-50 flex items-center justify-center font-bold text-xs uppercase">
-                            {r.name.charAt(0)}
-                          </div>
-                          <div>
-                            <div className="font-bold text-sand-900">{r.name}</div>
-                            <div className="text-[10px] text-sand-500">{r.department || 'Editorial'}</div>
-                          </div>
-                        </div>
-                        <span className="text-[10px] font-semibold text-sand-600 capitalize">
-                          {r.role}
-                        </span>
-                      </div>
-                    ))}
+                        <PhoneCall className="h-3 w-3 text-sand-600" />
+                        Trigger Call Invite
+                      </button>
+                    </div>
                   </div>
-                </div>
+                ))}
               </div>
             </div>
           )}
         </div>
       )}
 
-      {/* 4. NEW PROJECT MODAL */}
+      {/* NEW PROJECT MODAL */}
       {isNewProjectModalOpen && (
         <div className="fixed inset-0 z-50 bg-sand-950/40 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl border border-sand-300 max-w-lg w-full p-6 shadow-xl space-y-4 animate-scaleUp">
-            <div className="flex items-center justify-between pb-2 border-b border-sand-200">
-              <h3 className="font-serif font-bold text-base text-sand-950">
-                Create New Collaborative Project
-              </h3>
+          <div className="bg-white rounded-2xl max-w-lg w-full p-6 border border-sand-300 shadow-xl space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-sand-200">
+              <h3 className="font-serif font-bold text-base text-sand-950">Create New Project</h3>
               <button
                 onClick={() => setIsNewProjectModalOpen(false)}
-                className="text-sand-400 hover:text-sand-700 font-bold"
+                className="text-sand-500 hover:text-sand-800 font-bold"
               >
-                ✕
+                <X className="h-5 w-5" />
               </button>
             </div>
 
-            <form onSubmit={handleCreateProject} className="space-y-3.5 text-xs">
-              <div className="space-y-1">
-                <label className="font-bold text-sand-700 uppercase text-[11px]">
-                  Project Title
+            <form onSubmit={handleCreateProject} className="space-y-3">
+              <div>
+                <label className="text-xs font-bold text-sand-800 block mb-1">
+                  Project Title *
                 </label>
                 <input
                   type="text"
-                  placeholder="e.g. Q1 Global Webinar Campaign & Video Suite"
+                  required
                   value={newTitle}
                   onChange={(e) => setNewTitle(e.target.value)}
-                  required
-                  className="w-full p-2.5 rounded-lg border border-sand-300 bg-white"
+                  placeholder="e.g. Q4 Brand Transformation Campaign"
+                  className="w-full p-2.5 rounded-xl border border-sand-300 text-xs text-sand-950 focus:outline-none focus:ring-1 focus:ring-[#3C311F]"
                 />
               </div>
 
-              <div className="space-y-1">
-                <label className="font-bold text-sand-700 uppercase text-[11px]">
-                  Campaign Objective & Scope
+              <div>
+                <label className="text-xs font-bold text-sand-800 block mb-1">
+                  Description
                 </label>
                 <textarea
                   rows={2}
-                  placeholder="Describe content goals, target claims to prove, and governance rules..."
                   value={newDesc}
                   onChange={(e) => setNewDesc(e.target.value)}
-                  className="w-full p-2.5 rounded-lg border border-sand-300 bg-white"
+                  placeholder="Brief summary of compliance objectives..."
+                  className="w-full p-2.5 rounded-xl border border-sand-300 text-xs text-sand-950 focus:outline-none focus:ring-1 focus:ring-[#3C311F]"
                 />
               </div>
 
               <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1">
-                  <label className="font-bold text-sand-700 uppercase text-[11px]">
-                    Target Completion Date
+                <div>
+                  <label className="text-xs font-bold text-sand-800 block mb-1">
+                    Target Deadline
                   </label>
                   <input
                     type="date"
                     value={newDeadline}
                     onChange={(e) => setNewDeadline(e.target.value)}
-                    className="w-full p-2 rounded-lg border border-sand-300 bg-white"
+                    className="w-full p-2 rounded-xl border border-sand-300 text-xs text-sand-950"
                   />
                 </div>
-
-                <div className="space-y-1">
-                  <label className="font-bold text-sand-700 uppercase text-[11px]">
-                    Target Channels
+                <div>
+                  <label className="text-xs font-bold text-sand-800 block mb-1">
+                    Publish Channels
                   </label>
                   <input
                     type="text"
                     value={newChannels}
                     onChange={(e) => setNewChannels(e.target.value)}
-                    placeholder="LinkedIn, YouTube, Newsletter"
-                    className="w-full p-2 rounded-lg border border-sand-300 bg-white"
+                    placeholder="LinkedIn, YouTube, Web"
+                    className="w-full p-2 rounded-xl border border-sand-300 text-xs text-sand-950"
                   />
                 </div>
               </div>
 
-              <div className="pt-2 flex justify-end gap-2 border-t border-sand-200">
+              <div className="pt-3 border-t border-sand-200 flex justify-end gap-2">
                 <button
                   type="button"
                   onClick={() => setIsNewProjectModalOpen(false)}
-                  className="px-4 py-2 rounded-lg border border-sand-300 text-sand-700 hover:bg-sand-100 font-semibold text-xs"
+                  className="px-4 py-2 rounded-xl border border-sand-300 text-xs font-semibold text-sand-700 hover:bg-sand-50"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 rounded-lg bg-[#3C311F] text-white hover:bg-[#2B2316] font-semibold text-xs shadow-xs"
+                  className="px-5 py-2 rounded-xl bg-[#3C311F] hover:bg-[#2B2316] text-white text-xs font-bold shadow-xs"
                 >
-                  Launch Project
+                  Create Project
                 </button>
               </div>
             </form>

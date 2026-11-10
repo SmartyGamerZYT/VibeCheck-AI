@@ -161,19 +161,19 @@ export const WorkflowIntegrations: React.FC<WorkflowIntegrationsProps> = ({
       {/* 1. TOP BANNER */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-5 rounded-2xl bg-white border border-sand-300 shadow-xs">
         <div className="space-y-1">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2.5">
             <span className="p-2 rounded-xl bg-sand-100 text-[#3C311F]">
               <Workflow className="h-5 w-5" />
             </span>
             <div>
-              <h2 className="text-lg font-serif font-bold text-sand-950 flex items-center gap-2">
-                Workflow & Direct Platform Integrations
-                <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300">
-                  Real-Time Sync Active
+              <h2 className="text-base sm:text-lg font-serif font-bold text-sand-950 flex items-center gap-2">
+                Workflow Integrations
+                <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full bg-sand-100 text-sand-800 border border-sand-300">
+                  {integrations.filter((p) => p.isConnected).length} Connected
                 </span>
               </h2>
               <p className="text-xs text-sand-600">
-                Connect external publishing channels, design suites, and team chat to automate compliance verification.
+                Connect publishing channels, design suites, and team workspaces to verify compliance across platforms.
               </p>
             </div>
           </div>
@@ -182,7 +182,7 @@ export const WorkflowIntegrations: React.FC<WorkflowIntegrationsProps> = ({
         {/* Sync Summary Count */}
         <div className="flex items-center gap-2 font-mono text-xs">
           <span className="px-3 py-1.5 rounded-xl bg-sand-100 border border-sand-200 text-sand-800 font-bold">
-            {integrations.filter((p) => p.isConnected).length} of {integrations.length} Platforms Connected
+            {integrations.filter((p) => p.isConnected).length} of {integrations.length} Connected
           </span>
         </div>
       </div>
