@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   INITIAL_ORGS,
   INITIAL_ACCOUNTS,
@@ -92,8 +92,12 @@ export default function Home() {
   }, []);
 
   const handleAddProject = (newProj: Project) => {
+    const projectWithOrg = {
+      ...newProj,
+      orgId: currentUser?.orgId || newProj.orgId,
+    };
     setProjects((prev) => {
-      const updated = [newProj, ...prev];
+      const updated = [projectWithOrg, ...prev];
       try {
         localStorage.setItem('vibecheck_projects', JSON.stringify(updated));
       } catch (e) {}
@@ -196,6 +200,18 @@ export default function Home() {
   const orgSubmissions = currentUser
     ? submissions.filter((s) => s.orgId === currentUser.orgId)
     : submissions;
+
+  // Filter projects by current org
+  const orgProjects = useMemo(() => {
+    if (!currentOrg) return [];
+    return projects.filter((p) => p.orgId === currentOrg.id);
+  }, [projects, currentOrg]);
+
+  // Filter change records by current org projects
+  const orgChangeRecords = useMemo(() => {
+    const orgProjIds = new Set(orgProjects.map((p) => p.id));
+    return changeRecords.filter((c) => orgProjIds.has(c.projectId));
+  }, [changeRecords, orgProjects]);
 
   // Audit Log Helper
   const handleLogAudit = (
@@ -397,8 +413,8 @@ export default function Home() {
               <CollaborationHub
                 currentUser={currentUser}
                 teamMembers={orgTeamMembers}
-                projects={projects}
-                changeRecords={changeRecords}
+                projects={orgProjects}
+                changeRecords={orgChangeRecords}
                 onAddProject={handleAddProject}
                 onUpdateProject={handleUpdateProject}
                 onAddChangeRecord={handleAddChangeRecord}
@@ -523,7 +539,11 @@ export default function Home() {
 
             {/* 7. GOVERNANCE ANALYTICS */}
             {activeTab === 'analytics' && (
-              <AnalyticsInsights submissions={orgSubmissions} />
+              <AnalyticsInsights
+                submissions={orgSubmissions}
+                teamMembers={orgTeamMembers}
+                organization={currentOrg}
+              />
             )}
 
             {/* 8. AUDIT LOGS */}

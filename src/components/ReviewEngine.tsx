@@ -39,14 +39,12 @@ export const ReviewEngine: React.FC<ReviewEngineProps> = ({
   onSubmitToQueue,
   onLogAudit,
 }) => {
-  const [title, setTitle] = useState('Product Launch Copy Draft');
+  const [title, setTitle] = useState('');
   const [format, setFormat] = useState<ContentFormat>('ad_copy');
-  const [channel, setChannel] = useState('LinkedIn & Social');
-  const [targetAudience, setTargetAudience] = useState('General Audience');
+  const [channel, setChannel] = useState('');
+  const [targetAudience, setTargetAudience] = useState('');
   
-  const [text, setText] = useState(
-    `Are you tired of chronic fatigue? Lumina Health brings you the ultimate miracle cure that offers a 100% risk-free guaranteed recovery within 48 hours! Unlike OmniCare Health which charges outrageous prices, our program is cheap and accessible for all patients. Sign up today!`
-  );
+  const [text, setText] = useState('');
 
   const [isLoading, setIsLoading] = useState(false);
   const [reviewResult, setReviewResult] = useState<ReviewResult | null>(null);
@@ -61,6 +59,11 @@ export const ReviewEngine: React.FC<ReviewEngineProps> = ({
 
   // Trigger AI Brand Analysis
   const handleRunReview = async () => {
+    if (!text.trim() && !selectedImage) {
+      alert('Please enter or paste draft content in the editor (or upload a document/image) before running the AI audit.');
+      return;
+    }
+
     setIsLoading(true);
     setSuccessToast(null);
 
@@ -320,16 +323,26 @@ export const ReviewEngine: React.FC<ReviewEngineProps> = ({
       return;
     }
 
+    if (!title.trim()) {
+      alert('Please enter a content title before submitting to the approval queue.');
+      return;
+    }
+
+    if (!text.trim() && !selectedImage) {
+      alert('Please enter content before submitting to the approval queue.');
+      return;
+    }
+
     setIsSubmitting(true);
     const newSubmission: Partial<ContentSubmission> = {
       id: `sub_${Date.now()}`,
       orgId: currentUser.orgId,
-      title,
+      title: title.trim(),
       format,
       rawText: text,
       currentText: text,
-      channel,
-      targetAudience,
+      channel: channel.trim() || 'General',
+      targetAudience: targetAudience.trim() || 'General Audience',
       author: {
         id: currentUser.id,
         name: currentUser.name,
@@ -436,6 +449,7 @@ export const ReviewEngine: React.FC<ReviewEngineProps> = ({
                 type="text"
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
+                placeholder="Enter document title (e.g. Q4 Launch Announcement)..."
                 className="w-full text-xs font-semibold text-sand-900 bg-sand-50/50 border border-sand-200 rounded-lg px-3 py-2 focus:ring-2 focus:ring-sand-500 focus:outline-hidden"
               />
             </div>
@@ -468,6 +482,7 @@ export const ReviewEngine: React.FC<ReviewEngineProps> = ({
                   type="text"
                   value={channel}
                   onChange={(e) => setChannel(e.target.value)}
+                  placeholder="e.g. LinkedIn, Blog, Email"
                   className="w-full text-xs text-sand-800 bg-sand-50/50 border border-sand-200 rounded-lg p-2 focus:outline-hidden"
                 />
               </div>
@@ -480,6 +495,7 @@ export const ReviewEngine: React.FC<ReviewEngineProps> = ({
                   type="text"
                   value={targetAudience}
                   onChange={(e) => setTargetAudience(e.target.value)}
+                  placeholder="e.g. General Audience, Enterprise"
                   className="w-full text-xs text-sand-800 bg-sand-50/50 border border-sand-200 rounded-lg p-2 focus:outline-hidden"
                 />
               </div>

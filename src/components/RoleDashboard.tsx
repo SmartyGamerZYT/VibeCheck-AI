@@ -59,9 +59,7 @@ export const RoleDashboard: React.FC<RoleDashboardProps> = ({
   };
 
   const [isEditorOpen, setIsEditorOpen] = useState(false);
-  const [editorText, setEditorText] = useState(
-    '### Welcome to VibeCheck AI Document Composer\n\nDraft your product launch copy, clinical announcements, or social posts here with full rich formatting before submitting for compliance audit.'
-  );
+  const [editorText, setEditorText] = useState('');
 
   const pendingApprovals = submissions.filter(
     (s) => s.status === 'in_review' || s.status === 'draft'

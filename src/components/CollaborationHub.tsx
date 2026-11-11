@@ -118,6 +118,12 @@ export const CollaborationHub: React.FC<CollaborationHubProps> = ({
   const selectedProject =
     projects.find((p) => p.id === selectedProjectId) || projects[0] || null;
 
+  useEffect(() => {
+    if (projects.length > 0 && (!selectedProjectId || !projects.some((p) => p.id === selectedProjectId))) {
+      setSelectedProjectId(projects[0].id);
+    }
+  }, [projects, selectedProjectId]);
+
   // Cleanup media streams on unmount
   useEffect(() => {
     return () => {
@@ -805,38 +811,54 @@ return (
     </div>
 
     {/* PROJECTS SELECTOR */}
-    <div className="space-y-2">
-      <div className="flex items-center justify-between text-xs font-bold text-sand-700 uppercase tracking-wider px-1">
-        <span>Active Projects ({projects.length})</span>
+    {projects.length === 0 ? (
+      <div className="p-10 rounded-2xl bg-white border border-sand-300 shadow-xs text-center space-y-3">
+        <FolderKanban className="h-10 w-10 text-sand-400 mx-auto" />
+        <h3 className="font-serif font-bold text-base text-sand-900">No Projects Found</h3>
+        <p className="text-xs text-sand-600 max-w-md mx-auto">
+          No projects have been created for your organization yet. Start a new cross-channel campaign, editorial brief, or content workflow.
+        </p>
+        <button
+          onClick={() => setIsNewProjectModalOpen(true)}
+          className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#3C311F] hover:bg-[#2A2215] text-sand-50 text-xs font-semibold shadow-xs"
+        >
+          <Plus className="h-3.5 w-3.5" />
+          Create First Project
+        </button>
       </div>
+    ) : (
+      <div className="space-y-2">
+        <div className="flex items-center justify-between text-xs font-bold text-sand-700 uppercase tracking-wider px-1">
+          <span>Active Projects ({projects.length})</span>
+        </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-        {projects.map((proj) => {
-          const isSelected = proj.id === selectedProjectId;
-          const status = statusConfig[proj.status];
-          return (
-            <div
-              key={proj.id}
-              onClick={() => setSelectedProjectId(proj.id)}
-              className={`cursor-pointer p-4 rounded-xl border transition-all text-left relative overflow-hidden ${isSelected
-                  ? 'bg-white border-[#3C311F] shadow-sm ring-1 ring-[#3C311F]/20'
-                  : 'bg-sand-50/70 border-sand-200 hover:bg-white hover:border-sand-300 shadow-2xs'
-                }`}
-            >
-              <div className="flex items-center justify-between gap-2 mb-2">
-                <span
-                  className={`text-[9px] uppercase font-bold px-2 py-0.5 rounded-full border ${status.bg} ${status.text} ${status.border}`}
-                >
-                  {status.label}
-                </span>
-                <span className="text-[11px] font-mono font-bold text-sand-700">
-                  {proj.progressPercent}%
-                </span>
-              </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+          {projects.map((proj) => {
+            const isSelected = proj.id === selectedProjectId;
+            const status = statusConfig[proj.status];
+            return (
+              <div
+                key={proj.id}
+                onClick={() => setSelectedProjectId(proj.id)}
+                className={`cursor-pointer p-4 rounded-xl border transition-all text-left relative overflow-hidden ${isSelected
+                    ? 'bg-white border-[#3C311F] shadow-sm ring-1 ring-[#3C311F]/20'
+                    : 'bg-sand-50/70 border-sand-200 hover:bg-white hover:border-sand-300 shadow-2xs'
+                  }`}
+              >
+                <div className="flex items-center justify-between gap-2 mb-2">
+                  <span
+                    className={`text-[9px] uppercase font-bold px-2 py-0.5 rounded-full border ${status.bg} ${status.text} ${status.border}`}
+                  >
+                    {status.label}
+                  </span>
+                  <span className="text-[11px] font-mono font-bold text-sand-700">
+                    {proj.progressPercent}%
+                  </span>
+                </div>
 
-              <h3 className="font-serif font-bold text-sm text-sand-950 truncate mb-1">
-                {proj.title}
-              </h3>
+                <h3 className="font-serif font-bold text-sm text-sand-950 truncate mb-1">
+                  {proj.title}
+                </h3>
 
                 <div className="h-1.5 w-full bg-sand-200 rounded-full overflow-hidden mt-3">
                   <div
@@ -845,10 +867,11 @@ return (
                   />
                 </div>
               </div>
-              );
+            );
           })}
-            </div>
+        </div>
       </div>
+    )}
 
       {/* PROJECT DETAILS & SUBTABS */}
       {selectedProject && (
