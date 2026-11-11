@@ -292,6 +292,7 @@ export default function Home() {
           <LandingPage
             onExploreWorkspace={() => setViewMode('auth')}
             onLoginClick={() => setViewMode('auth')}
+            onOpenLegal={handleOpenLegal}
           />
           <CookieConsentBanner onOpenPrivacy={() => handleOpenLegal('privacy')} />
           <LegalSupportModal
@@ -551,6 +552,41 @@ export default function Home() {
               </>
             )}
           </div>
+
+          {/* DASHBOARD FOOTER */}
+          <footer className="mt-auto border-t border-sand-200/80 bg-white/70 py-4 px-4 sm:px-8 text-xs text-sand-600">
+            <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-3">
+              <div className="font-medium text-sand-700">
+                © 2026 VibeCheck AI. All rights reserved.
+              </div>
+              <div className="flex flex-wrap items-center justify-center gap-5 font-medium">
+                <button
+                  onClick={() => handleOpenLegal('about')}
+                  className="hover:text-sand-950 transition-colors"
+                >
+                  About Us
+                </button>
+                <button
+                  onClick={() => handleOpenLegal('contact')}
+                  className="hover:text-sand-950 transition-colors"
+                >
+                  Contact Us
+                </button>
+                <button
+                  onClick={() => handleOpenLegal('privacy')}
+                  className="hover:text-sand-950 transition-colors"
+                >
+                  Privacy Policy
+                </button>
+                <button
+                  onClick={() => handleOpenLegal('terms')}
+                  className="hover:text-sand-950 transition-colors"
+                >
+                  Terms of Service
+                </button>
+              </div>
+            </div>
+          </footer>
         </main>
       </div>
 

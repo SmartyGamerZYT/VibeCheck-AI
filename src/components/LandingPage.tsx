@@ -16,14 +16,18 @@ import {
   Check,
 } from 'lucide-react';
 
+import { LegalTab } from './LegalSupportModal';
+
 interface LandingPageProps {
   onExploreWorkspace: () => void;
   onLoginClick: () => void;
+  onOpenLegal?: (tab: LegalTab) => void;
 }
 
 export const LandingPage: React.FC<LandingPageProps> = ({
   onExploreWorkspace,
   onLoginClick,
+  onOpenLegal,
 }) => {
   // Track open state for the 4 workflow cards
   const [openCardIndex, setOpenCardIndex] = useState<number | null>(0);
@@ -360,15 +364,40 @@ export const LandingPage: React.FC<LandingPageProps> = ({
       </section>
 
       {/* 4. FOOTER */}
-      <footer className="border-t border-sand-200/80 bg-[#FAF8F5] py-8 text-center text-xs text-sand-500">
-        <div className="max-w-6xl mx-auto px-5 sm:px-8 flex flex-col sm:flex-row items-center justify-between gap-3">
+      <footer className="border-t border-sand-200/80 bg-[#FAF8F5] py-8 text-xs text-sand-600">
+        <div className="max-w-6xl mx-auto px-5 sm:px-8 flex flex-col md:flex-row items-center justify-between gap-4">
           <div className="flex items-center gap-2">
             <ShieldCheck className="h-4 w-4 text-[#9C8561]" />
             <span className="font-serif font-bold text-sand-900">VibeCheck AI</span>
-            <span>— Intelligent Brand Governance</span>
+            <span className="text-sand-400">|</span>
+            <span className="font-medium text-sand-600">© 2026 VibeCheck AI. All rights reserved.</span>
           </div>
-          <div className="text-[11px] text-sand-400 font-mono">
-            WCAG 2.1 AAA Compliant • Computer Vision • Multi-Factor Brand Safety
+
+          <div className="flex flex-wrap items-center justify-center gap-6 font-medium text-sand-600">
+            <button
+              onClick={() => onOpenLegal?.('about')}
+              className="hover:text-sand-950 transition-colors"
+            >
+              About Us
+            </button>
+            <button
+              onClick={() => onOpenLegal?.('contact')}
+              className="hover:text-sand-950 transition-colors"
+            >
+              Contact Us
+            </button>
+            <button
+              onClick={() => onOpenLegal?.('privacy')}
+              className="hover:text-sand-950 transition-colors"
+            >
+              Privacy Policy
+            </button>
+            <button
+              onClick={() => onOpenLegal?.('terms')}
+              className="hover:text-sand-950 transition-colors"
+            >
+              Terms of Service
+            </button>
           </div>
         </div>
       </footer>

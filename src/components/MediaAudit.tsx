@@ -55,8 +55,6 @@ export const MediaAudit: React.FC<MediaAuditProps> = ({
     isCompliant: boolean;
   } | null>(null);
   const [isPlayingAudio, setIsPlayingAudio] = useState(false);
-  const [showKeyPrompt, setShowKeyPrompt] = useState(false);
-  const [freeGeminiKey, setFreeGeminiKey] = useState<string>('');
 
   // Video State
   const [videoFile, setVideoFile] = useState<File | null>(null);
@@ -69,14 +67,6 @@ export const MediaAudit: React.FC<MediaAuditProps> = ({
   const audioInputRef = useRef<HTMLInputElement>(null);
   const videoInputRef = useRef<HTMLInputElement>(null);
   const recognitionRef = useRef<any>(null);
-
-  // Initialize stored free gemini key if available
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const stored = localStorage.getItem('vibecheck_gemini_key');
-      if (stored) setFreeGeminiKey(stored);
-    }
-  }, []);
 
   // Clean up Object URLs
   useEffect(() => {
@@ -274,8 +264,7 @@ export const MediaAudit: React.FC<MediaAuditProps> = ({
 
   const executeAudioTranscription = async (file: File) => {
     setIsAuditing(true);
-    setAuditStepMessage('Transcribing audio via AI model...');
-    setShowKeyPrompt(false);
+    setAuditStepMessage('Transcribing audio via OpenRouter AI speech model...');
 
     try {
       const reader = new FileReader();
@@ -288,19 +277,16 @@ export const MediaAudit: React.FC<MediaAuditProps> = ({
             body: JSON.stringify({
               audioBase64: base64,
               mimeType: file.type || 'audio/mp3',
-              googleGeminiKey: freeGeminiKey.trim(),
             }),
           });
           const data = await resp.json();
           if (data.success && data.transcript) {
             setTranscriptText(data.transcript);
-            setShowKeyPrompt(false);
-          } else if (data.requiresCredit) {
-            setShowKeyPrompt(true);
+          } else if (data.transcript) {
+            setTranscriptText(data.transcript);
           }
         } catch (apiErr) {
           console.warn('Transcription API error:', apiErr);
-          setShowKeyPrompt(true);
         } finally {
           setIsAuditing(false);
           setAuditStepMessage('');
@@ -310,15 +296,6 @@ export const MediaAudit: React.FC<MediaAuditProps> = ({
     } catch {
       setIsAuditing(false);
       setAuditStepMessage('');
-    }
-  };
-
-  const handleSaveFreeKey = () => {
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('vibecheck_gemini_key', freeGeminiKey.trim());
-    }
-    if (audioFile) {
-      executeAudioTranscription(audioFile);
     }
   };
 
@@ -694,37 +671,6 @@ export const MediaAudit: React.FC<MediaAuditProps> = ({
               </button>
             </div>
           </div>
-
-          {/* FREE API KEY HELPER CARD (WHEN OPENROUTER ASKS FOR CREDIT ON BINARY AUDIO) */}
-          {showKeyPrompt && (
-            <div className="p-4 rounded-xl bg-amber-50 border border-amber-300 space-y-2">
-              <div className="flex items-center gap-2 text-xs font-bold text-amber-900">
-                <AlertTriangle className="h-4 w-4 text-amber-700" />
-                <span>Audio File Transcription Options</span>
-              </div>
-              <p className="text-xs text-amber-800">
-                OpenRouter requires $0.50 credit for binary audio files. You can enter a free Google Gemini API Key below, or click &ldquo;Record Live Voice&rdquo; to transcribe live directly with zero keys!
-              </p>
-              <div className="flex items-center gap-2 pt-1">
-                <div className="relative flex-1">
-                  <Key className="absolute left-3 top-2.5 h-3.5 w-3.5 text-sand-400" />
-                  <input
-                    type="password"
-                    placeholder="Enter free Gemini API Key (AIza... from aistudio.google.com)"
-                    value={freeGeminiKey}
-                    onChange={(e) => setFreeGeminiKey(e.target.value)}
-                    className="w-full pl-9 pr-3 py-1.5 text-xs rounded-lg border border-sand-300 bg-white text-sand-900 focus:outline-none focus:ring-1 focus:ring-[#3C311F]"
-                  />
-                </div>
-                <button
-                  onClick={handleSaveFreeKey}
-                  className="px-3 py-1.5 rounded-lg bg-[#3C311F] hover:bg-[#2B2316] text-white text-xs font-bold"
-                >
-                  Save & Transcribe
-                </button>
-              </div>
-            </div>
-          )}
 
           {/* PROGRESS BANNER */}
           {isAuditing && (
