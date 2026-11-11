@@ -295,6 +295,7 @@ export default function Home() {
                 onUpdateProject={handleUpdateProject}
                 onAddChangeRecord={handleAddChangeRecord}
                 onLogAudit={handleLogAudit}
+                onSwitchUser={handleLogin}
               />
             )}
 
