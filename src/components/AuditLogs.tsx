@@ -44,9 +44,6 @@ export const AuditLogs: React.FC<AuditLogsProps> = ({ logs }) => {
           <h2 className="text-xl font-serif font-bold text-sand-900">
             Immutable Governance Audit Ledger
           </h2>
-          <p className="text-xs text-sand-600">
-            Full compliance trail recording all AI reviews, guideline modifications, and cryptographic approval signatures.
-          </p>
         </div>
 
         <div className="flex items-center gap-2">

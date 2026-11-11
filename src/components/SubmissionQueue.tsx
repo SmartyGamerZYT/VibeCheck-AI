@@ -196,9 +196,6 @@ export const SubmissionQueue: React.FC<SubmissionQueueProps> = ({
           <h2 className="text-xl font-serif font-bold text-sand-900">
             Review & Approval Workflow Queue
           </h2>
-          <p className="text-xs text-sand-600">
-            Track submissions, manage human-in-the-loop sign-offs, and conduct threaded editorial reviews.
-          </p>
         </div>
 
         <div className="flex items-center gap-2">

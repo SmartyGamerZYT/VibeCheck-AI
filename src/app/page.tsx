@@ -364,12 +364,12 @@ export default function Home() {
           orgName={currentOrg.name}
           isMobileOpen={isMobileNavOpen}
           onCloseMobile={() => setIsMobileNavOpen(false)}
-          onOpenLegal={handleOpenLegal}
         />
 
         {/* Dynamic Workspace Area */}
-        <main className="flex-1 overflow-y-auto p-5 md:p-7">
-          <div className="max-w-6xl mx-auto">
+        <main className="flex-1 overflow-y-auto flex flex-col justify-between">
+          <div className="flex-1 p-5 md:p-7">
+            <div className="max-w-6xl mx-auto">
             {/* If Non-Admin and subscription is unpaid: Render Lock Screen */}
             {isOrgSubscriptionInactive && currentUser.role !== 'admin' ? (
               <div className="p-12 text-center max-w-lg mx-auto my-12 bg-white rounded-3xl border border-sand-300 shadow-card space-y-4">
@@ -551,11 +551,12 @@ export default function Home() {
             {activeTab === 'audit' && <AuditLogs logs={auditLogs} />}
               </>
             )}
+            </div>
           </div>
 
-          {/* DASHBOARD FOOTER */}
-          <footer className="mt-auto border-t border-sand-200/80 bg-white/70 py-4 px-4 sm:px-8 text-xs text-sand-600">
-            <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-3">
+          {/* DASHBOARD FOOTER - ALWAYS PINNED AT THE END OF EVERY PAGE */}
+          <footer className="mt-auto border-t border-sand-200/80 bg-white/80 py-4 px-4 sm:px-8 text-xs text-sand-600 shrink-0">
+            <div className="max-w-6xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-3">
               <div className="font-medium text-sand-700">
                 © 2026 VibeCheck AI. All rights reserved.
               </div>

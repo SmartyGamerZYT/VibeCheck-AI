@@ -91,9 +91,6 @@ export const AssetLibrary: React.FC<AssetLibraryProps> = ({
           <h2 className="text-xl font-serif font-bold text-sand-900">
             Brand Asset Library & Media CDN
           </h2>
-          <p className="text-xs text-sand-600">
-            Cloudinary-backed storage with role-based watermark enforcement for sensitive media.
-          </p>
         </div>
 
         <div className="flex items-center gap-2">

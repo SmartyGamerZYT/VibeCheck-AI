@@ -125,9 +125,6 @@ export const AnalyticsInsights: React.FC<AnalyticsInsightsProps> = ({
           <h2 className="text-xl font-serif font-bold text-sand-900">
             Brand Governance & Compliance Insights
           </h2>
-          <p className="text-xs text-sand-600">
-            {organization ? `${organization.name} • ` : ''}Real-time analytics on violation frequency, guideline drift, and creator compliance benchmarks.
-          </p>
         </div>
 
         <button
@@ -148,9 +145,6 @@ export const AnalyticsInsights: React.FC<AnalyticsInsightsProps> = ({
           <div className="text-2xl font-serif font-extrabold text-emerald-800 mt-1">
             {avgComplianceScore}%
           </div>
-          <p className="text-[10px] text-emerald-700 font-medium mt-1 flex items-center gap-1">
-            <TrendingUp className="h-3 w-3" /> Based on {scoredCount} audited submission{scoredCount === 1 ? '' : 's'}
-          </p>
         </div>
 
         <div className="bg-white p-4 rounded-xl border border-sand-300 shadow-xs">
@@ -160,9 +154,6 @@ export const AnalyticsInsights: React.FC<AnalyticsInsightsProps> = ({
           <div className="text-2xl font-serif font-extrabold text-sand-900 mt-1">
             {submissions.length}
           </div>
-          <p className="text-[10px] text-sand-500 mt-1">
-            Across {activeChannels.length || 1} publication channel{activeChannels.length === 1 ? '' : 's'}
-          </p>
         </div>
 
         <div className="bg-white p-4 rounded-xl border border-sand-300 shadow-xs">
@@ -172,9 +163,6 @@ export const AnalyticsInsights: React.FC<AnalyticsInsightsProps> = ({
           <div className="text-2xl font-serif font-extrabold text-rose-700 mt-1">
             {terminologyViolations}
           </div>
-          <p className="text-[10px] text-rose-700 font-medium mt-1">
-            Pre-publication intervention ({terminologyViolations > 0 ? `${terminologyViolations} caught` : '0 detected'})
-          </p>
         </div>
 
         <div className="bg-white p-4 rounded-xl border border-sand-300 shadow-xs">
@@ -184,7 +172,6 @@ export const AnalyticsInsights: React.FC<AnalyticsInsightsProps> = ({
           <div className="text-2xl font-serif font-extrabold text-sand-900 mt-1">
             {submissions.filter((s) => s.status === 'approved').length}
           </div>
-          <p className="text-[10px] text-sand-500 mt-1">SHA-256 Verified Releases</p>
         </div>
       </div>
 
