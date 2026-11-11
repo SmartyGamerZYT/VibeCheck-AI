@@ -36,29 +36,29 @@ NEXT_PUBLIC_APP_NAME="VibeCheck AI"
 
 # OpenRouter API Key (Required for AI Review Engine & Audio Transcription)
 # Obtain from https://openrouter.ai/keys
-OPENROUTER_API_KEY="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"
+OPENROUTER_API_KEY="sk-or-v1-**********"
 
 # Google Gemini API Key (Direct API integration)
 # Obtain from https://aistudio.google.com/
-GEMINI_API_KEY="AQ.Ab8RN6LHfdDpyM15KDSEINvUF2i3BftbhY9yxIXODTKZnsBj6g"
+GEMINI_API_KEY="****"
 
 # Supabase Publishable Key (Authentication & Client RLS)
 # Obtain from https://supabase.com/dashboard
-SUPABASE_PUBLISHABLE_KEY="sb_publishable_ih1967JAOdjTbD67fZVZfQ_gk7qecfp"
+SUPABASE_PUBLISHABLE_KEY="******"
 
 # ==============================================================================
 # OPTIONAL INTEGRATION KEYS
 # ==============================================================================
 
 # Cloudinary (Optional - Cloud asset hosting & optimization)
-CLOUDINARY_CLOUD_NAME="xngyfpka"
-CLOUDINARY_API_KEY="322842443257289"
-CLOUDINARY_API_SECRET="ybXUYcLvKZYfdz2mWZv_fs552ls"
-CLOUDINARY_URL="cloudinary://322842443257289:ybXUYcLvKZYfdz2mWZv_fs552ls@xngyfpka"
+CLOUDINARY_CLOUD_NAME="******"
+CLOUDINARY_API_KEY="******"
+CLOUDINARY_API_SECRET="******"
+CLOUDINARY_URL="********"
 
 # Resend (Optional - Transactional email notifications)
 # Obtain from https://resend.com/api-keys
-RESEND_API_KEY="re_cfqCsDnC_5pVrpCkfWL9pSuWH9SNFX2xi"
+RESEND_API_KEY="****"
 ```
 
 ---
