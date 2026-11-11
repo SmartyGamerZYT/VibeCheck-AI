@@ -22,6 +22,37 @@ export interface UserAccount {
   createdAt: string;
 }
 
+export interface MemberMistakeRecord {
+  id: string;
+  memberId: string;
+  memberName: string;
+  memberRole: UserRole;
+  submissionId?: string;
+  submissionTitle?: string;
+  category: 'spelling' | 'grammar' | 'tone' | 'claims' | 'terminology' | 'safety' | 'contrast';
+  mistakeText: string;
+  suggestedCorrection: string;
+  timestamp: string;
+}
+
+export interface MemberPerformanceStats {
+  memberId: string;
+  memberName: string;
+  memberRole: UserRole;
+  email: string;
+  totalSubmissions: number;
+  totalMistakes: number;
+  complianceMeterPercent: number; // 0 - 100%
+  mistakeBreakdown: {
+    grammar: number;
+    tone: number;
+    claims: number;
+    spelling: number;
+    terminology: number;
+  };
+  recentMistakes: MemberMistakeRecord[];
+}
+
 export type IssueSeverity = 'critical' | 'warning' | 'suggestion';
 export type IssueCategory =
   | 'tone'

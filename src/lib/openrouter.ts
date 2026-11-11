@@ -407,7 +407,7 @@ Return ONLY a valid JSON object matching this schema:
               },
             ],
             temperature: 0.1,
-            max_tokens: 2500,
+            max_tokens: 1500,
             response_format: { type: 'json_object' },
           }),
         });
