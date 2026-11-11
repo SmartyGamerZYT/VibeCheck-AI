@@ -26,20 +26,20 @@ Explore our deep-dive architecture, design, and operational manuals in the [`Doc
 
 | Document | Description | Direct Link |
 | :--- | :--- | :--- |
-| **Product Requirements (PRD)** | Problem statement, user personas, success metrics & feature backlog | [PRD.md](file:///c:/Users/kshit/Desktop/VibeCheck AI/Docs/PRD.md) |
-| **UI/UX Design System** | Sandstone & Bronze aesthetic tokens, typography scale & component specs | [Design.md](file:///c:/Users/kshit/Desktop/VibeCheck AI/Docs/Design.md) |
-| **System Architecture** | Next.js 14 App Router, multi-tenant data isolation & WebRTC signaling | [Architecture.md](file:///c:/Users/kshit/Desktop/VibeCheck AI/Docs/Architecture.md) |
-| **Database Schema** | Domain models, RLS tenancy, indexing & entity-relationship diagrams | [Database.md](file:///c:/Users/kshit/Desktop/VibeCheck AI/Docs/Database.md) |
-| **REST API Reference** | Complete endpoint specs (`/api/review`, `/api/transcribe-audio`, etc.) | [API.md](file:///c:/Users/kshit/Desktop/VibeCheck AI/Docs/API.md) |
-| **Multi-Agent Intelligence** | Multi-agent consensus, claim verification, tone & vision agents | [Agents.md](file:///c:/Users/kshit/Desktop/VibeCheck AI/Docs/Agents.md) |
-| **Project Implementation** | Full codebase directory layout, module mappings & component hierarchy | [Project Implementation.md](file:///c:/Users/kshit/Desktop/VibeCheck AI/Docs/Project%20Implementation.md) |
-| **Setup & Initialization** | Prerequisites, environment secrets, seed credentials & dev execution | [setup&initilisation.md](file:///c:/Users/kshit/Desktop/VibeCheck AI/Docs/setup&initilisation.md) |
-| **Feature Development** | Life of a feature, adding custom compliance rules & media extensions | [feature Development.md](file:///c:/Users/kshit/Desktop/VibeCheck AI/Docs/feature%20Development.md) |
-| **Authentication & Security** | RBAC, ₹5,000/mo paywall, SHA-256 sign-offs & cookie consent | [Authentication &security.md](file:///c:/Users/kshit/Desktop/VibeCheck AI/Docs/Authentication%20&security.md) |
-| **MCP Integration** | Model Context Protocol server tools, resources & agent connections | [MCP connection.md](file:///c:/Users/kshit/Desktop/VibeCheck AI/Docs/MCP%20connection.md) |
-| **Workflow Integrations** | YouTube, Canva, Microsoft Teams, GitHub, Slack, Figma connectors | [Integrations.md](file:///c:/Users/kshit/Desktop/VibeCheck AI/Docs/Integrations.md) |
-| **Testing & Quality Assurance** | Unit testing, multi-modal test fixtures, CI/CD verification & QA matrix | [Testing &QA.md](file:///c:/Users/kshit/Desktop/VibeCheck AI/Docs/Testing%20&QA.md) |
-| **Troubleshooting Runbook** | Debugging audio transcription, WebRTC screen share & storage recovery | [Debugging.md](file:///c:/Users/kshit/Desktop/VibeCheck AI/Docs/Debugging.md) |
+| **Product Requirements (PRD)** | Problem statement, user personas, success metrics & feature backlog | [PRD.md](Docs/PRD.md) |
+| **UI/UX Design System** | Sandstone & Bronze aesthetic tokens, typography scale & component specs | [Design.md](Docs/Design.md) |
+| **System Architecture** | Next.js 14 App Router, multi-tenant data isolation & WebRTC signaling | [Architecture.md](Docs/Architecture.md) |
+| **Database Schema** | Domain models, RLS tenancy, indexing & entity-relationship diagrams | [Database.md](Docs/Database.md) |
+| **REST API Reference** | Complete endpoint specs (`/api/review`, `/api/transcribe-audio`, etc.) | [API.md](Docs/API.md) |
+| **Multi-Agent Intelligence** | Multi-agent consensus, claim verification, tone & vision agents | [Agents.md](Docs/Agents.md) |
+| **Project Implementation** | Full codebase directory layout, module mappings & component hierarchy | [Project Implementation.md](Docs/Project%20Implementation.md) |
+| **Setup & Initialization** | Prerequisites, environment secrets, seed credentials & dev execution | [setup&initilisation.md](Docs/setup&initilisation.md) |
+| **Feature Development** | Life of a feature, adding custom compliance rules & media extensions | [feature Development.md](Docs/feature%20Development.md) |
+| **Authentication & Security** | RBAC, ₹5,000/mo paywall, SHA-256 sign-offs & cookie consent | [Authentication &security.md](Docs/Authentication%20&security.md) |
+| **MCP Integration** | Model Context Protocol server tools, resources & agent connections | [MCP connection.md](Docs/MCP%20connection.md) |
+| **Workflow Integrations** | YouTube, Canva, Microsoft Teams, GitHub, Slack, Figma connectors | [Integrations.md](Docs/Integrations.md) |
+| **Testing & Quality Assurance** | Unit testing, multi-modal test fixtures, CI/CD verification & QA matrix | [Testing &QA.md](Docs/Testing%20&QA.md) |
+| **Troubleshooting Runbook** | Debugging audio transcription, WebRTC screen share & storage recovery | [Debugging.md](Docs/Debugging.md) |
 
 ---
 
