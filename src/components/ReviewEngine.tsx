@@ -388,9 +388,6 @@ export const ReviewEngine: React.FC<ReviewEngineProps> = ({
           <h2 className="text-lg font-serif font-bold text-sand-900">
             Brand Review & Governance
           </h2>
-          <p className="text-xs text-sand-500">
-            Scan content against {guidelines.brandName} guidelines before publishing.
-          </p>
         </div>
 
         <div className="flex items-center gap-2">

@@ -35,6 +35,10 @@ import { SettingsModal } from '@/components/SettingsModal';
 import { CollaborationHub } from '@/components/CollaborationHub';
 import { MediaAudit } from '@/components/MediaAudit';
 import { WorkflowIntegrations } from '@/components/WorkflowIntegrations';
+import { LegalSupportModal, LegalTab } from '@/components/LegalSupportModal';
+import { CookieConsentBanner } from '@/components/CookieConsentBanner';
+import { SubscriptionCheckoutModal } from '@/components/SubscriptionCheckoutModal';
+import { AlertTriangle, Lock, CreditCard } from 'lucide-react';
 
 export default function Home() {
   const [organizations, setOrganizations] = useState<Organization[]>(INITIAL_ORGS);
@@ -45,6 +49,18 @@ export default function Home() {
 
   const [activeTab, setActiveTab] = useState<NavTab>('dashboard');
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+
+  // Legal & Support Modal State
+  const [isLegalModalOpen, setIsLegalModalOpen] = useState(false);
+  const [legalModalTab, setLegalModalTab] = useState<LegalTab>('about');
+
+  // Subscription Renewal Modal State
+  const [isRenewModalOpen, setIsRenewModalOpen] = useState(false);
+
+  const handleOpenLegal = (tab: LegalTab) => {
+    setLegalModalTab(tab);
+    setIsLegalModalOpen(true);
+  };
 
   const [guidelines, setGuidelines] = useState<BrandGuidelineConfig>(DEFAULT_BRAND_GUIDELINES);
   const [submissions, setSubmissions] = useState<ContentSubmission[]>(INITIAL_SUBMISSIONS);
@@ -222,25 +238,72 @@ export default function Home() {
     (s) => s.status === 'in_review' || s.status === 'changes_requested'
   ).length;
 
+  // Subscription Renewal handler
+  const handleSubscriptionRenewSuccess = (details: {
+    txnId: string;
+    amount: number;
+    paymentMethod: string;
+    billingDate: string;
+  }) => {
+    setOrganizations((prev) => {
+      const updated = prev.map((o) =>
+        o.id === currentOrg.id
+          ? {
+              ...o,
+              subscriptionStatus: 'active' as const,
+              subscriptionPrice: details.amount,
+              nextBillingDate: details.billingDate,
+              lastPaymentTxnId: details.txnId,
+            }
+          : o
+      );
+      try {
+        localStorage.setItem('vibecheck_orgs', JSON.stringify(updated));
+      } catch (e) {}
+      return updated;
+    });
+    setIsRenewModalOpen(false);
+  };
+
+  const isOrgSubscriptionInactive =
+    currentOrg.subscriptionStatus === 'unpaid' || currentOrg.subscriptionStatus === 'past_due';
+
   // If not logged in, render the clean landing page or login / registration screen
   if (!currentUser) {
     if (viewMode === 'landing') {
       return (
-        <LandingPage
-          onExploreWorkspace={() => setViewMode('auth')}
-          onLoginClick={() => setViewMode('auth')}
-        />
+        <>
+          <LandingPage
+            onExploreWorkspace={() => setViewMode('auth')}
+            onLoginClick={() => setViewMode('auth')}
+          />
+          <CookieConsentBanner onOpenPrivacy={() => handleOpenLegal('privacy')} />
+          <LegalSupportModal
+            isOpen={isLegalModalOpen}
+            initialTab={legalModalTab}
+            onClose={() => setIsLegalModalOpen(false)}
+          />
+        </>
       );
     }
 
     return (
-      <AuthScreen
-        organizations={organizations}
-        accounts={accounts}
-        onLogin={handleLogin}
-        onRegister={handleRegister}
-        onBackToLanding={() => setViewMode('landing')}
-      />
+      <>
+        <AuthScreen
+          organizations={organizations}
+          accounts={accounts}
+          onLogin={handleLogin}
+          onRegister={handleRegister}
+          onBackToLanding={() => setViewMode('landing')}
+          onOpenLegal={handleOpenLegal}
+        />
+        <CookieConsentBanner onOpenPrivacy={() => handleOpenLegal('privacy')} />
+        <LegalSupportModal
+          isOpen={isLegalModalOpen}
+          initialTab={legalModalTab}
+          onClose={() => setIsLegalModalOpen(false)}
+        />
+      </>
     );
   }
 
@@ -255,6 +318,24 @@ export default function Home() {
         onToggleMobileMenu={() => setIsMobileNavOpen(!isMobileNavOpen)}
       />
 
+      {/* Admin Subscription Past-Due Banner */}
+      {isOrgSubscriptionInactive && currentUser.role === 'admin' && (
+        <div className="bg-amber-600 text-white px-5 py-2.5 text-xs font-semibold flex items-center justify-between shadow-xs">
+          <div className="flex items-center gap-2">
+            <AlertTriangle className="h-4 w-4 text-amber-200" />
+            <span>
+              Organization Subscription Required: Workspace services are suspended for all members of {currentOrg.name}. Pay ₹5,000/month to restore access.
+            </span>
+          </div>
+          <button
+            onClick={() => setIsRenewModalOpen(true)}
+            className="px-3 py-1 bg-white text-sand-950 font-bold rounded-lg text-xs hover:bg-sand-100 transition-all shadow-2xs"
+          >
+            Renew ₹5,000 Plan
+          </button>
+        </div>
+      )}
+
       {/* Main Workspace Body */}
       <div className="flex-1 flex overflow-hidden">
         {/* Left Sidebar tailored by Role */}
@@ -266,12 +347,39 @@ export default function Home() {
           orgName={currentOrg.name}
           isMobileOpen={isMobileNavOpen}
           onCloseMobile={() => setIsMobileNavOpen(false)}
+          onOpenLegal={handleOpenLegal}
         />
 
         {/* Dynamic Workspace Area */}
         <main className="flex-1 overflow-y-auto p-5 md:p-7">
           <div className="max-w-6xl mx-auto">
-            {/* 1. ROLE-SPECIFIC DASHBOARDS */}
+            {/* If Non-Admin and subscription is unpaid: Render Lock Screen */}
+            {isOrgSubscriptionInactive && currentUser.role !== 'admin' ? (
+              <div className="p-12 text-center max-w-lg mx-auto my-12 bg-white rounded-3xl border border-sand-300 shadow-card space-y-4">
+                <div className="h-16 w-16 rounded-2xl bg-amber-100 text-amber-800 flex items-center justify-center mx-auto shadow-sm">
+                  <Lock className="h-8 w-8" />
+                </div>
+                <div className="space-y-1">
+                  <h3 className="font-serif font-bold text-lg text-sand-950">
+                    Workspace Access Suspended
+                  </h3>
+                  <p className="text-xs text-sand-600">
+                    Your company workspace ({currentOrg.name}) requires an active ₹5,000/month subscription. Service is currently stopped for all team members.
+                  </p>
+                </div>
+                <div className="p-3 rounded-xl bg-sand-50 border border-sand-200 text-[11px] text-sand-700 font-mono">
+                  Only your organization Admin ({currentOrg.adminEmail}) has to pay to restore workspace access.
+                </div>
+                <button
+                  onClick={handleLogout}
+                  className="px-4 py-2 rounded-xl bg-[#3C311F] hover:bg-[#2B2316] text-white text-xs font-bold transition-all shadow-xs"
+                >
+                  Sign Out / Switch Account
+                </button>
+              </div>
+            ) : (
+              <>
+                {/* 1. ROLE-SPECIFIC DASHBOARDS */}
             {activeTab === 'dashboard' && (
               <RoleDashboard
                 currentUser={currentUser}
@@ -420,6 +528,8 @@ export default function Home() {
 
             {/* 8. AUDIT LOGS */}
             {activeTab === 'audit' && <AuditLogs logs={auditLogs} />}
+              </>
+            )}
           </div>
         </main>
       </div>
@@ -433,6 +543,28 @@ export default function Home() {
         teamMembers={orgTeamMembers}
         onUpdateUser={handleUpdateUser}
       />
+
+      {/* Legal & Support Modal (About Us, Contact Us, Privacy, Terms, Copyright) */}
+      <LegalSupportModal
+        isOpen={isLegalModalOpen}
+        initialTab={legalModalTab}
+        onClose={() => setIsLegalModalOpen(false)}
+      />
+
+      {/* Cookie Consent Floating Banner */}
+      <CookieConsentBanner onOpenPrivacy={() => handleOpenLegal('privacy')} />
+
+      {/* Subscription Renewal Modal for Admin */}
+      {isRenewModalOpen && (
+        <SubscriptionCheckoutModal
+          isOpen={isRenewModalOpen}
+          orgName={currentOrg.name}
+          adminEmail={currentOrg.adminEmail}
+          amount={5000}
+          onClose={() => setIsRenewModalOpen(false)}
+          onPaymentSuccess={handleSubscriptionRenewSuccess}
+        />
+      )}
     </div>
   );
 }

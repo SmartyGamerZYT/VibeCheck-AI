@@ -88,6 +88,39 @@ Directly connects to leading enterprise tools:
 
 ---
 
+## 💳 Enterprise Pricing & Subscription Model
+
+VibeCheck AI is built on a streamlined **Single-Seat Company License** model designed for frictionless team onboarding:
+
+- **Subscription Rate**: **₹5,000 / month** per organization.
+- **Admin Paid Tier**: Only the **Company Admin** pays the ₹5,000/mo subscription fee during registration or through the billing dashboard.
+- **100% Free for Team Members**: Creators, Reviewers, and Managers join at zero cost simply by entering the organization's unique invite key (`adminKey`).
+- **Organization-Wide Service Suspension**: If the organization's monthly subscription lapses or becomes unpaid, platform service locks gracefully for all members under that organization with a polite lock screen directing them to contact their Admin (`adminEmail`). The Admin retains immediate one-click renewal capability (`Renew ₹5,000 Plan`) to instantly restore access.
+- **Supported Payment Methods**: UPI (Google Pay, PhonePe, Paytm, BHIM QR), Credit/Debit Cards (Visa, MasterCard, RuPay), and NetBanking.
+
+---
+
+## ⚖️ Legal, Privacy & Governance Infrastructure
+
+- **Persistent Downside Sidebar Navigation**: Every dashboard view includes immediate access to:
+  - **About Us**: Company history, founding principles, engineering ethos, and leadership.
+  - **Contact Us**: Interactive contact ticket form and enterprise support routing (`support@vibecheck.ai`, `compliance@vibecheck.ai`).
+  - **Privacy Policy**: GDPR, CCPA, and zero-retention data sovereignty commitments.
+  - **Terms of Service**: Enterprise SaaS licensing agreement, liability caps, and uptime SLA.
+  - **Copyright Notice**: Official legal intellectual property notice (© 2026 VibeCheck AI Inc.).
+- **Registration Consent**: Enforces a mandatory *"I accept terms & conditions and privacy policy"* validation check before account creation.
+- **Cookie Consent**: Interactive banner displayed on first website visit (`Accept All` vs. `Reject Non-Essential`), persisting user consent in `localStorage`.
+
+---
+
+## 📊 Member Mistake Tracking & Accuracy Meter
+
+- **Admin Member Analytics**: The Admin Dashboard features an interactive **Member Mistakes & Accuracy Meter** tracking error frequency across all team members.
+- **Dynamic Accuracy Percentage**: Real-time formula mapping violations (`Critical: -15%`, `Major: -8%`, `Minor: -3%`) into an intuitive color-coded gauge (Emerald $\ge 85\%$, Amber $70-84\%$, Rose $< 70\%$).
+- **Persistent Error Log**: Audited issues, grammar slip-ups, unapproved claims, and color non-compliance are attributed to the author and saved for performance reviews.
+
+---
+
 ## 🛠️ Tech Stack
 
 - **Framework**: [Next.js 14](https://nextjs.org/) (App Router, Server Components & API Routes)
@@ -169,6 +202,9 @@ Create a `.env.local` file in the root directory:
 ```env
 # OpenRouter API Key (Required for AI Review Engine)
 OPENROUTER_API_KEY="sk-or-v1-..."
+
+# Google Gemini API Key (Direct Audio & Vision API integration)
+GEMINI_API_KEY="AQ...."
 
 # Cloudinary (Optional - For cloud asset hosting)
 CLOUDINARY_CLOUD_NAME="your-cloud-name"

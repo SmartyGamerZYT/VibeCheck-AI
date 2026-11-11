@@ -7,6 +7,12 @@ export interface Organization {
   createdAt: string;
   adminId: string;
   adminEmail: string;
+  subscriptionStatus?: 'active' | 'past_due' | 'unpaid' | 'canceled';
+  subscriptionPrice?: number;
+  subscriptionBillingCycle?: 'monthly';
+  nextBillingDate?: string;
+  lastPaymentTxnId?: string;
+  paymentMethod?: string;
 }
 
 export interface UserAccount {

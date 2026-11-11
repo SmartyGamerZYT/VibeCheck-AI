@@ -171,9 +171,6 @@ export const BrandGuidelinesBuilder: React.FC<BrandGuidelinesBuilderProps> = ({
           <h2 className="text-xl font-serif font-bold text-sand-900">
             Brand Guidelines Builder
           </h2>
-          <p className="text-xs text-sand-600">
-            Configure tone personas, glossary dictionary, verified claims, and competitor lockout rules.
-          </p>
         </div>
 
         {isAdminOrManager && (

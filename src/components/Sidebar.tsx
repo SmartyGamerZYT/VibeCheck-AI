@@ -38,6 +38,7 @@ interface SidebarProps {
   orgName: string;
   isMobileOpen?: boolean;
   onCloseMobile?: () => void;
+  onOpenLegal?: (tab: 'about' | 'contact' | 'privacy' | 'terms' | 'copyright') => void;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -48,6 +49,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   orgName,
   isMobileOpen = false,
   onCloseMobile,
+  onOpenLegal,
 }) => {
   // Define items tailored to each role
   const getNavItems = () => {
@@ -297,13 +299,57 @@ export const Sidebar: React.FC<SidebarProps> = ({
         </nav>
       </div>
 
-      {/* Workspace Footer Indicator */}
-      <div className="pt-3 border-t border-sand-200 px-2.5">
-        <div className="text-[10px] uppercase font-bold tracking-wider text-sand-400">
-          Role Scope
+      {/* Workspace Footer & Legal Navigation */}
+      <div className="pt-3 border-t border-sand-200 px-2.5 space-y-3">
+        <div className="flex items-center justify-between">
+          <div className="text-[10px] uppercase font-bold tracking-wider text-sand-400">
+            Role Scope
+          </div>
+          <div className="text-[11px] font-bold text-sand-900 capitalize">
+            {userRole}
+          </div>
         </div>
-        <div className="text-xs font-bold text-sand-900 capitalize mt-0.5">
-          {userRole}
+
+        {/* Downside Links for Every Dashboard */}
+        <div className="pt-2 border-t border-sand-200/80 space-y-1.5 text-[11px]">
+          <div className="flex items-center justify-between">
+            <button
+              onClick={() => onOpenLegal?.('about')}
+              className="text-sand-600 hover:text-sand-950 font-medium transition-colors"
+            >
+              About Us
+            </button>
+            <span className="text-sand-300">•</span>
+            <button
+              onClick={() => onOpenLegal?.('contact')}
+              className="text-sand-600 hover:text-sand-950 font-medium transition-colors"
+            >
+              Contact Us
+            </button>
+          </div>
+
+          <div className="flex items-center justify-between">
+            <button
+              onClick={() => onOpenLegal?.('privacy')}
+              className="text-sand-600 hover:text-sand-950 font-medium transition-colors"
+            >
+              Privacy Policy
+            </button>
+            <span className="text-sand-300">•</span>
+            <button
+              onClick={() => onOpenLegal?.('terms')}
+              className="text-sand-600 hover:text-sand-950 font-medium transition-colors"
+            >
+              Terms of Service
+            </button>
+          </div>
+
+          <button
+            onClick={() => onOpenLegal?.('copyright')}
+            className="w-full text-center text-[10px] text-sand-400 hover:text-sand-700 font-mono pt-1 block transition-colors"
+          >
+            © 2026 VibeCheck AI
+          </button>
         </div>
       </div>
     </div>

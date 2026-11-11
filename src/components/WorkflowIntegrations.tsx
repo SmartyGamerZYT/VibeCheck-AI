@@ -191,9 +191,6 @@ export const WorkflowIntegrations: React.FC<WorkflowIntegrationsProps> = ({
                 {integrations.filter((p) => p.isConnected).length} Connected
               </span>
             </h2>
-            <p className="text-xs text-sand-600">
-              Connect external platforms using your Google Account to sync certified brand assets.
-            </p>
           </div>
         </div>
 

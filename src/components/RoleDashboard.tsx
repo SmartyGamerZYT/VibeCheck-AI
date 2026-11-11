@@ -78,7 +78,7 @@ export const RoleDashboard: React.FC<RoleDashboardProps> = ({
     try {
       const saved = localStorage.getItem('vibecheck_member_mistakes');
       if (saved) return JSON.parse(saved);
-    } catch {}
+    } catch { }
     return [
       {
         id: 'mst_1',
@@ -137,7 +137,7 @@ export const RoleDashboard: React.FC<RoleDashboardProps> = ({
   useEffect(() => {
     try {
       localStorage.setItem('vibecheck_member_mistakes', JSON.stringify(memberMistakes));
-    } catch (e) {}
+    } catch (e) { }
   }, [memberMistakes]);
 
   // Handle adding a mistake to a member
@@ -212,7 +212,6 @@ export const RoleDashboard: React.FC<RoleDashboardProps> = ({
             <div className="text-2xl font-serif font-bold text-sand-900 mt-1">
               {teamMembers.length}
             </div>
-            <div className="text-[10px] text-sand-500 mt-0.5">Under this organization</div>
           </div>
 
           <div className="bg-white p-4 rounded-xl border border-sand-200 shadow-xs">
@@ -220,7 +219,6 @@ export const RoleDashboard: React.FC<RoleDashboardProps> = ({
             <div className="text-2xl font-serif font-bold text-amber-700 mt-1">
               {pendingApprovals.length}
             </div>
-            <div className="text-[10px] text-sand-500 mt-0.5">Awaiting sign-off</div>
           </div>
 
           <div className="bg-white p-4 rounded-xl border border-sand-200 shadow-xs">
@@ -228,7 +226,6 @@ export const RoleDashboard: React.FC<RoleDashboardProps> = ({
             <div className="text-2xl font-serif font-bold text-emerald-800 mt-1">
               {approvedCount}
             </div>
-            <div className="text-[10px] text-sand-500 mt-0.5">Legally signed off</div>
           </div>
 
           <div className="bg-white p-4 rounded-xl border border-sand-200 shadow-xs">
@@ -236,7 +233,6 @@ export const RoleDashboard: React.FC<RoleDashboardProps> = ({
             <div className="text-2xl font-serif font-bold text-sand-900 mt-1">
               {guidelines.approvedGlossary.length}
             </div>
-            <div className="text-[10px] text-sand-500 mt-0.5">Active policy constraints</div>
           </div>
         </div>
 
@@ -252,9 +248,6 @@ export const RoleDashboard: React.FC<RoleDashboardProps> = ({
                 Configure <ArrowRight className="h-3 w-3" />
               </button>
             </h3>
-            <p className="text-xs text-sand-600">
-              Manage forbidden vocabulary, clinical claim citations, and tone sliders for {safeOrg.name}.
-            </p>
           </div>
 
           <div className="bg-white p-5 rounded-2xl border border-sand-300 shadow-xs space-y-3">
@@ -267,9 +260,6 @@ export const RoleDashboard: React.FC<RoleDashboardProps> = ({
                 View Roster <ArrowRight className="h-3 w-3" />
               </button>
             </h3>
-            <p className="text-xs text-sand-600">
-              Share <strong>{safeOrg.adminKey}</strong> with new team members so they join your company account.
-            </p>
           </div>
         </div>
 
@@ -284,9 +274,6 @@ export const RoleDashboard: React.FC<RoleDashboardProps> = ({
                   Performance & Mistake Meter
                 </span>
               </h3>
-              <p className="text-xs text-sand-600">
-                Member compliance meter calculated from grammar, tone, spelling, and claim errors in their drafts.
-              </p>
             </div>
 
             <span className="text-xs font-mono font-bold text-sand-700 bg-white px-3 py-1.5 rounded-xl border border-sand-200 shadow-2xs self-start sm:self-auto">
@@ -331,20 +318,18 @@ export const RoleDashboard: React.FC<RoleDashboardProps> = ({
 
                     <div className="text-right">
                       <div
-                        className={`text-2xl font-serif font-extrabold ${
-                          isGood ? 'text-emerald-700' : isModerate ? 'text-amber-700' : 'text-rose-700'
-                        }`}
+                        className={`text-2xl font-serif font-extrabold ${isGood ? 'text-emerald-700' : isModerate ? 'text-amber-700' : 'text-rose-700'
+                          }`}
                       >
                         {meterPercent}%
                       </div>
                       <span
-                        className={`text-[9px] uppercase font-bold px-2 py-0.5 rounded-full border ${
-                          isGood
+                        className={`text-[9px] uppercase font-bold px-2 py-0.5 rounded-full border ${isGood
                             ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
                             : isModerate
-                            ? 'bg-amber-50 text-amber-800 border-amber-200'
-                            : 'bg-rose-50 text-rose-800 border-rose-200'
-                        }`}
+                              ? 'bg-amber-50 text-amber-800 border-amber-200'
+                              : 'bg-rose-50 text-rose-800 border-rose-200'
+                          }`}
                       >
                         {isGood ? 'High Quality' : isModerate ? 'Moderate Errors' : 'Frequent Mistakes'}
                       </span>
@@ -359,9 +344,8 @@ export const RoleDashboard: React.FC<RoleDashboardProps> = ({
                     </div>
                     <div className="h-2 w-full bg-sand-100 rounded-full overflow-hidden">
                       <div
-                        className={`h-full rounded-full transition-all duration-500 ${
-                          isGood ? 'bg-emerald-600' : isModerate ? 'bg-amber-600' : 'bg-rose-600'
-                        }`}
+                        className={`h-full rounded-full transition-all duration-500 ${isGood ? 'bg-emerald-600' : isModerate ? 'bg-amber-600' : 'bg-rose-600'
+                          }`}
                         style={{ width: `${meterPercent}%` }}
                       />
                     </div>
@@ -556,7 +540,6 @@ export const RoleDashboard: React.FC<RoleDashboardProps> = ({
             <div className="text-2xl font-serif font-bold text-amber-700 mt-1">
               {pendingApprovals.length}
             </div>
-            <div className="text-[10px] text-sand-500 mt-0.5">Require final approval</div>
           </div>
 
           <div className="bg-white p-4 rounded-xl border border-sand-200 shadow-xs">
@@ -564,7 +547,6 @@ export const RoleDashboard: React.FC<RoleDashboardProps> = ({
             <div className="text-2xl font-serif font-bold text-sand-800 mt-1">
               {changesRequested.length}
             </div>
-            <div className="text-[10px] text-sand-500 mt-0.5">Returned to creator</div>
           </div>
 
           <div className="bg-white p-4 rounded-xl border border-sand-200 shadow-xs">
@@ -572,7 +554,6 @@ export const RoleDashboard: React.FC<RoleDashboardProps> = ({
             <div className="text-2xl font-serif font-bold text-emerald-800 mt-1">
               {approvedCount}
             </div>
-            <div className="text-[10px] text-sand-500 mt-0.5">With SHA-256 signatures</div>
           </div>
         </div>
 
@@ -654,7 +635,6 @@ export const RoleDashboard: React.FC<RoleDashboardProps> = ({
             <div className="text-2xl font-serif font-bold text-blue-800 mt-1">
               {pendingApprovals.length}
             </div>
-            <div className="text-[10px] text-sand-500 mt-0.5">Assigned submissions</div>
           </div>
 
           <div className="bg-white p-4 rounded-xl border border-sand-200 shadow-xs">
@@ -662,7 +642,6 @@ export const RoleDashboard: React.FC<RoleDashboardProps> = ({
             <div className="text-2xl font-serif font-bold text-emerald-800 mt-1">
               {approvedCount}
             </div>
-            <div className="text-[10px] text-sand-500 mt-0.5">Passed review</div>
           </div>
 
           <div className="bg-white p-4 rounded-xl border border-sand-200 shadow-xs">
@@ -670,7 +649,6 @@ export const RoleDashboard: React.FC<RoleDashboardProps> = ({
             <div className="text-2xl font-serif font-bold text-amber-700 mt-1">
               {changesRequested.length}
             </div>
-            <div className="text-[10px] text-sand-500 mt-0.5">With feedback</div>
           </div>
         </div>
 
@@ -685,9 +663,6 @@ export const RoleDashboard: React.FC<RoleDashboardProps> = ({
                 Open Reviewer <ArrowRight className="h-3 w-3" />
               </button>
             </h3>
-            <p className="text-xs text-sand-600">
-              Run multi-factor AI scans on content drafts, documents, or ad copy against {safeOrg.name} guidelines.
-            </p>
           </div>
 
           <div className="bg-white p-5 rounded-2xl border border-sand-300 shadow-xs space-y-3">
@@ -700,9 +675,6 @@ export const RoleDashboard: React.FC<RoleDashboardProps> = ({
                 Inspect <ArrowRight className="h-3 w-3" />
               </button>
             </h3>
-            <p className="text-xs text-sand-600">
-              Reference approved glossary terms, clinical citations, and competitor lockout lists.
-            </p>
           </div>
         </div>
       </div>
@@ -749,7 +721,6 @@ export const RoleDashboard: React.FC<RoleDashboardProps> = ({
           <div className="text-2xl font-serif font-bold text-sand-900 mt-1">
             {mySubmissions.length}
           </div>
-          <div className="text-[10px] text-sand-500 mt-0.5">Created by you</div>
         </div>
 
         <div className="bg-white p-4 rounded-xl border border-sand-200 shadow-xs">
@@ -757,7 +728,6 @@ export const RoleDashboard: React.FC<RoleDashboardProps> = ({
           <div className="text-2xl font-serif font-bold text-blue-700 mt-1">
             {mySubmissions.filter((s) => s.status === 'in_review').length}
           </div>
-          <div className="text-[10px] text-sand-500 mt-0.5">With reviewer / manager</div>
         </div>
 
         <div className="bg-white p-4 rounded-xl border border-sand-200 shadow-xs">
@@ -765,75 +735,71 @@ export const RoleDashboard: React.FC<RoleDashboardProps> = ({
           <div className="text-2xl font-serif font-bold text-emerald-800 mt-1">
             {mySubmissions.filter((s) => s.status === 'approved').length}
           </div>
-          <div className="text-[10px] text-sand-500 mt-0.5">Cleared for publication</div>
         </div>
       </div>
 
       {/* Quick Start Composer Card */}
       <div className="bg-white p-5 rounded-2xl border border-sand-300 shadow-xs space-y-3">
-        <div className="flex items-center justify-between pb-2 border-b border-sand-200">
-          <h3 className="text-xs font-bold uppercase tracking-wider text-sand-800 flex items-center gap-1.5">
-            <Sparkles className="h-4 w-4 text-emerald-600" />
-            Check Content Before Publishing
-          </h3>
-          <button
-            onClick={() => onNavigate('review')}
-            className="text-xs font-semibold text-sand-600 hover:text-sand-900"
-          >
-            Launch Reviewer →
-          </button>
-        </div>
-        <p className="text-xs text-sand-600 leading-relaxed">
-          Verify your text, DOCX document, social copy, or email against {safeOrg.name}&apos;s tone, glossary, and factual guidelines. Get instant explainable flags and intent-preserving rewrite suggestions.
-        </p>
-      </div>
-
-      {/* Quick Document Composer / Scratchpad Modal */}
-      {isEditorOpen && (
-        <div className="fixed inset-0 z-50 bg-sand-950/50 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl border border-sand-300 shadow-modal max-w-2xl w-full p-5 space-y-4">
-            <div className="flex items-center justify-between pb-3 border-b border-sand-200">
-              <div className="flex items-center gap-2">
-                <PenTool className="h-4 w-4 text-[#9C6342]" />
-                <h3 className="font-serif font-bold text-base text-sand-900">
-                  Quick Document Composer & Editor
-                </h3>
-              </div>
-              <button
-                onClick={() => setIsEditorOpen(false)}
-                className="text-sand-400 hover:text-sand-800 p-1 rounded-lg"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-
-            <DocumentEditor
-              value={editorText}
-              onChange={setEditorText}
-              minRows={8}
-            />
-
-            <div className="flex items-center justify-between pt-2">
-              <button
-                onClick={() => setIsEditorOpen(false)}
-                className="px-3.5 py-2 rounded-lg bg-sand-100 hover:bg-sand-200 text-sand-800 text-xs font-semibold"
-              >
-                Close
-              </button>
-              <button
-                onClick={() => {
-                  setIsEditorOpen(false);
-                  onNavigate('review');
-                }}
-                className="px-4 py-2 rounded-lg bg-[#9C6342] hover:bg-[#865133] text-white text-xs font-semibold flex items-center gap-1.5 shadow-xs"
-              >
-                Audit in Review Engine →
-              </button>
-            </div>
+          <div className="flex items-center justify-between">
+            <h3 className="text-xs font-bold uppercase tracking-wider text-sand-800 flex items-center gap-1.5">
+              <Sparkles className="h-4 w-4 text-emerald-600" />
+              Check Content Before Publishing
+            </h3>
+            <button
+              onClick={() => onNavigate('review')}
+              className="text-xs font-semibold text-sand-600 hover:text-sand-900"
+            >
+              Launch Reviewer →
+            </button>
           </div>
         </div>
-      )}
-    </div>
-  );
+
+        {/* Quick Document Composer / Scratchpad Modal */}
+        {isEditorOpen && (
+          <div className="fixed inset-0 z-50 bg-sand-950/50 backdrop-blur-xs flex items-center justify-center p-4">
+            <div className="bg-white rounded-2xl border border-sand-300 shadow-modal max-w-2xl w-full p-5 space-y-4">
+              <div className="flex items-center justify-between pb-3 border-b border-sand-200">
+                <div className="flex items-center gap-2">
+                  <PenTool className="h-4 w-4 text-[#9C6342]" />
+                  <h3 className="font-serif font-bold text-base text-sand-900">
+                    Quick Document Composer & Editor
+                  </h3>
+                </div>
+                <button
+                  onClick={() => setIsEditorOpen(false)}
+                  className="text-sand-400 hover:text-sand-800 p-1 rounded-lg"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+
+              <DocumentEditor
+                value={editorText}
+                onChange={setEditorText}
+                minRows={8}
+              />
+
+              <div className="flex items-center justify-between pt-2">
+                <button
+                  onClick={() => setIsEditorOpen(false)}
+                  className="px-3.5 py-2 rounded-lg bg-sand-100 hover:bg-sand-200 text-sand-800 text-xs font-semibold"
+                >
+                  Close
+                </button>
+                <button
+                  onClick={() => {
+                    setIsEditorOpen(false);
+                    onNavigate('review');
+                  }}
+                  className="px-4 py-2 rounded-lg bg-[#9C6342] hover:bg-[#865133] text-white text-xs font-semibold flex items-center gap-1.5 shadow-xs"
+                >
+                  Audit in Review Engine →
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+      );
 };
 

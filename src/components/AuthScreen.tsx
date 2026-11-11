@@ -2,7 +2,19 @@
 
 import React, { useState } from 'react';
 import { UserAccount, Organization, UserRole } from '@/lib/types';
-import { ShieldCheck, KeyRound, Building2, User, Mail, Lock, ArrowRight, Sparkles, Check } from 'lucide-react';
+import {
+  ShieldCheck,
+  KeyRound,
+  Building2,
+  User,
+  Mail,
+  Lock,
+  ArrowRight,
+  Check,
+  CreditCard,
+  FileText,
+} from 'lucide-react';
+import { SubscriptionCheckoutModal } from './SubscriptionCheckoutModal';
 
 interface AuthScreenProps {
   organizations: Organization[];
@@ -10,6 +22,7 @@ interface AuthScreenProps {
   onLogin: (account: UserAccount) => void;
   onRegister: (account: UserAccount, newOrg?: Organization) => void;
   onBackToLanding?: () => void;
+  onOpenLegal?: (tab: 'about' | 'contact' | 'privacy' | 'terms' | 'copyright') => void;
 }
 
 export const AuthScreen: React.FC<AuthScreenProps> = ({
@@ -18,6 +31,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
   onLogin,
   onRegister,
   onBackToLanding,
+  onOpenLegal,
 }) => {
   const [isRegistering, setIsRegistering] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -33,6 +47,14 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
   const [regRole, setRegRole] = useState<UserRole>('creator');
   const [regOrgName, setRegOrgName] = useState(''); // If Admin
   const [regAdminKey, setRegAdminKey] = useState(''); // If Creator, Reviewer, Manager
+  const [acceptTerms, setAcceptTerms] = useState(false);
+
+  // Subscription Payment Modal for Admin
+  const [showSubscriptionModal, setShowSubscriptionModal] = useState(false);
+  const [pendingAdminData, setPendingAdminData] = useState<{
+    account: UserAccount;
+    org: Organization;
+  } | null>(null);
 
   const handleLoginSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -63,6 +85,11 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
       return;
     }
 
+    if (!acceptTerms) {
+      setErrorMsg('You must agree to the Terms & Conditions and Privacy Policy to create an account.');
+      return;
+    }
+
     if (accounts.some((a) => a.email.toLowerCase() === regEmail.trim().toLowerCase())) {
       setErrorMsg('An account with this email already exists.');
       return;
@@ -85,6 +112,9 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
         createdAt: new Date().toISOString(),
         adminId: newUserId,
         adminEmail: regEmail.trim(),
+        subscriptionStatus: 'unpaid', // Activated upon ₹5,000 payment
+        subscriptionPrice: 5000,
+        subscriptionBillingCycle: 'monthly',
       };
 
       const newAccount: UserAccount = {
@@ -98,7 +128,9 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
         createdAt: new Date().toISOString(),
       };
 
-      onRegister(newAccount, newOrg);
+      // Open ₹5,000 subscription payment step for Admin
+      setPendingAdminData({ account: newAccount, org: newOrg });
+      setShowSubscriptionModal(true);
     } else {
       // Creator, Reviewer, Manager must enter a valid admin key
       const keyToSearch = regAdminKey.trim().toUpperCase();
@@ -123,6 +155,29 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
 
       onRegister(newAccount);
     }
+  };
+
+  // Payment successful for Admin
+  const handlePaymentSuccess = (paymentDetails: {
+    txnId: string;
+    amount: number;
+    paymentMethod: string;
+    billingDate: string;
+  }) => {
+    if (!pendingAdminData) return;
+
+    const activatedOrg: Organization = {
+      ...pendingAdminData.org,
+      subscriptionStatus: 'active',
+      subscriptionPrice: paymentDetails.amount,
+      subscriptionBillingCycle: 'monthly',
+      nextBillingDate: paymentDetails.billingDate,
+      lastPaymentTxnId: paymentDetails.txnId,
+      paymentMethod: paymentDetails.paymentMethod,
+    };
+
+    setShowSubscriptionModal(false);
+    onRegister(pendingAdminData.account, activatedOrg);
   };
 
   // Check matching org for feedback
@@ -353,7 +408,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
               </div>
             </div>
 
-            {/* If Admin: Enter Company Name */}
+            {/* If Admin: Enter Company Name & Subscription Requirement Notice */}
             {regRole === 'admin' ? (
               <div className="p-3.5 rounded-xl bg-sand-50 border border-sand-300 space-y-2">
                 <label className="text-xs font-bold text-sand-900 block flex items-center gap-1.5">
@@ -368,9 +423,16 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
                   placeholder="e.g. Acme Corp"
                   className="w-full p-2 text-xs text-sand-900 bg-white border border-sand-300 rounded-lg focus:outline-hidden focus:ring-2 focus:ring-sand-500"
                 />
-                <p className="text-[11px] text-sand-600">
-                  Creating an Admin account will generate a unique <strong>Admin Organization Key</strong> that you can share with your team.
-                </p>
+
+                <div className="p-2.5 rounded-lg bg-amber-50 border border-amber-300 space-y-1 text-amber-950">
+                  <div className="text-[11px] font-bold flex items-center gap-1">
+                    <CreditCard className="h-3.5 w-3.5 text-amber-800" />
+                    Subscription: ₹5,000 / month
+                  </div>
+                  <p className="text-[10px] text-amber-800 leading-tight">
+                    Admin registers the company plan (₹5,000/mo). All invited creators, reviewers, and managers join free using your organization key.
+                  </p>
+                </div>
               </div>
             ) : (
               /* If Creator, Reviewer, Manager: Enter Admin Key */
@@ -390,27 +452,79 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
                 {matchedOrgPreview ? (
                   <div className="flex items-center gap-1.5 text-xs font-semibold text-emerald-800 bg-emerald-50 p-2 rounded border border-emerald-200">
                     <Check className="h-3.5 w-3.5 text-emerald-600" />
-                    Valid Key: Connecting to <strong>{matchedOrgPreview.name}</strong>
+                    Connecting to <strong>{matchedOrgPreview.name}</strong> (Included under Admin Plan)
                   </div>
                 ) : (
                   <p className="text-[11px] text-sand-600">
-                    Enter the key provided by your Admin (e.g. try demo key <strong>LUMINA-8842</strong>) to connect directly under their company.
+                    Enter the key provided by your Admin (e.g. try demo key <strong>LUMINA-8842</strong>) to connect directly.
                   </p>
                 )}
               </div>
             )}
 
+            {/* MANDATORY TERMS & CONDITIONS CHECKBOX */}
+            <div className="pt-2">
+              <label className="flex items-start gap-2.5 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  required
+                  checked={acceptTerms}
+                  onChange={(e) => setAcceptTerms(e.target.checked)}
+                  className="mt-0.5 h-4 w-4 rounded border-sand-300 text-sand-900 focus:ring-[#3C311F]"
+                />
+                <span className="text-[11px] text-sand-700 leading-tight">
+                  I accept the{' '}
+                  <button
+                    type="button"
+                    onClick={() => onOpenLegal?.('terms')}
+                    className="font-bold underline text-[#3C311F] hover:text-sand-950"
+                  >
+                    Terms &amp; Conditions
+                  </button>{' '}
+                  and{' '}
+                  <button
+                    type="button"
+                    onClick={() => onOpenLegal?.('privacy')}
+                    className="font-bold underline text-[#3C311F] hover:text-sand-950"
+                  >
+                    Privacy Policy
+                  </button>
+                  .
+                </span>
+              </label>
+            </div>
+
             <button
               type="submit"
               className="w-full py-2.5 rounded-xl bg-sand-900 text-sand-50 text-xs font-semibold hover:bg-sand-800 transition-all shadow-xs flex items-center justify-center gap-1.5"
             >
-              Create {regRole.toUpperCase()} Account
-              <ArrowRight className="h-3.5 w-3.5" />
+              {regRole === 'admin' ? (
+                <>
+                  <CreditCard className="h-3.5 w-3.5 text-amber-300" />
+                  Proceed to Payment (₹5,000/mo) & Activate
+                </>
+              ) : (
+                <>
+                  Create {regRole.toUpperCase()} Account
+                  <ArrowRight className="h-3.5 w-3.5" />
+                </>
+              )}
             </button>
           </form>
         )}
       </div>
+
+      {/* CHECKOUT MODAL FOR ADMIN */}
+      {showSubscriptionModal && pendingAdminData && (
+        <SubscriptionCheckoutModal
+          isOpen={showSubscriptionModal}
+          orgName={pendingAdminData.org.name}
+          adminEmail={pendingAdminData.account.email}
+          amount={5000}
+          onClose={() => setShowSubscriptionModal(false)}
+          onPaymentSuccess={handlePaymentSuccess}
+        />
+      )}
     </div>
   );
 };
-

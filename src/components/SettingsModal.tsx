@@ -15,6 +15,7 @@ import {
   Mail,
   Briefcase,
   Sparkles,
+  CreditCard,
 } from 'lucide-react';
 
 interface SettingsModalProps {
@@ -383,11 +384,35 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     You are connected under <strong>{safeOrg.name}</strong> as a{' '}
                     <strong className="capitalize">{currentUser?.role}</strong>.
                   </div>
-                  <p className="text-[11px] text-sand-500">
-                    Only organization Admins can view and regenerate the team registration key.
-                  </p>
                 </div>
               )}
+
+              {/* Workspace Subscription Details */}
+              <div className="p-4 rounded-xl bg-sand-50 border border-sand-300 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold uppercase tracking-wider text-sand-800 flex items-center gap-1.5">
+                    <CreditCard className="h-4 w-4 text-[#9C6342]" />
+                    Organization Subscription
+                  </span>
+                  <span className="text-[10px] uppercase font-bold px-2 py-0.5 rounded bg-emerald-100 text-emerald-800">
+                    {safeOrg.subscriptionStatus || 'Active'}
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2 text-xs pt-1">
+                  <div>
+                    <span className="text-sand-500 block text-[10px]">Monthly Plan:</span>
+                    <span className="font-bold text-sand-900">₹{safeOrg.subscriptionPrice || 5000} / month</span>
+                  </div>
+                  <div>
+                    <span className="text-sand-500 block text-[10px]">Next Billing:</span>
+                    <span className="font-mono text-sand-900 font-semibold">{safeOrg.nextBillingDate || '2026-12-15'}</span>
+                  </div>
+                </div>
+                <div className="text-[10px] text-sand-500 pt-1">
+                  Covers all active creators, reviewers, and managers under this company workspace.
+                </div>
+              </div>
             </div>
           )}
 
