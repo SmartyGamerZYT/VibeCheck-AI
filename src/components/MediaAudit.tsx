@@ -353,9 +353,27 @@ export const MediaAudit: React.FC<MediaAuditProps> = ({
 
   const executeAudioTranscription = async (fileOrBlob: File | Blob) => {
     setIsAuditing(true);
-    setAuditStepMessage('Transcribing audio speech...');
+    setAuditStepMessage('Transcribing speech with Puter.js AI Speech-to-Text...');
 
     try {
+      // 1. Primary: Puter.js AI Speech-to-Text
+      const puter = typeof window !== 'undefined' ? (window as any).puter : null;
+      if (puter?.ai?.speech2txt) {
+        try {
+          const pRes = await puter.ai.speech2txt(fileOrBlob);
+          const pText =
+            typeof pRes === 'string' ? pRes.trim() : (pRes?.text || pRes?.transcript || '').trim();
+          if (pText) {
+            setTranscriptText(pText);
+            return pText;
+          }
+        } catch (pErr) {
+          console.warn('Puter.js speech2txt notice:', pErr);
+        }
+      }
+
+      // 2. Server API fallback
+      setAuditStepMessage('Processing speech transcription...');
       const reader = new FileReader();
       const base64Promise = new Promise<string>((resolve, reject) => {
         reader.onload = () => resolve((reader.result as string).split(',')[1]);
