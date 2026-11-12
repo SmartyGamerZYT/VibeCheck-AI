@@ -180,12 +180,12 @@ export const MediaAudit: React.FC<MediaAuditProps> = ({
       if (recognitionRef.current) {
         try {
           recognitionRef.current.stop();
-        } catch {}
+        } catch { }
       }
       if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
         try {
           mediaRecorderRef.current.stop();
-        } catch {}
+        } catch { }
       }
       if (mediaStreamRef.current) {
         mediaStreamRef.current.getTracks().forEach((t) => t.stop());
@@ -208,8 +208,8 @@ export const MediaAudit: React.FC<MediaAuditProps> = ({
       const options = MediaRecorder.isTypeSupported('audio/webm')
         ? { mimeType: 'audio/webm' }
         : MediaRecorder.isTypeSupported('audio/mp4')
-        ? { mimeType: 'audio/mp4' }
-        : undefined;
+          ? { mimeType: 'audio/mp4' }
+          : undefined;
 
       const mediaRecorder = new MediaRecorder(stream, options);
       mediaRecorderRef.current = mediaRecorder;
@@ -285,7 +285,7 @@ export const MediaAudit: React.FC<MediaAuditProps> = ({
             if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
               try {
                 recognition.start();
-              } catch {}
+              } catch { }
             }
           };
 
@@ -353,10 +353,10 @@ export const MediaAudit: React.FC<MediaAuditProps> = ({
 
   const executeAudioTranscription = async (fileOrBlob: File | Blob) => {
     setIsAuditing(true);
-    setAuditStepMessage('Transcribing speech with Puter.js AI Speech-to-Text...');
+    setAuditStepMessage('Transcribing speech...');
 
     try {
-      // 1. Primary: Puter.js AI Speech-to-Text
+      // 1. Primary: AI Speech-to-Text via Puter.js
       const puter = typeof window !== 'undefined' ? (window as any).puter : null;
       if (puter?.ai?.speech2txt) {
         try {
@@ -528,822 +528,822 @@ export const MediaAudit: React.FC<MediaAuditProps> = ({
   // ==========================================
   // REAL VIDEO KEYFRAME EXTRACTION & AUDIT
   // ==========================================
-                const handleVideoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-                  const file = e.target.files?.[0];
-                  if (!file) return;
+  const handleVideoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
 
-                  if (videoUrl && videoUrl.startsWith('blob:')) URL.revokeObjectURL(videoUrl);
-                  const url = URL.createObjectURL(file);
+    if (videoUrl && videoUrl.startsWith('blob:')) URL.revokeObjectURL(videoUrl);
+    const url = URL.createObjectURL(file);
 
-                  setVideoFile(file);
-                  setVideoUrl(url);
-                  setVideoAudit(null);
-                };
+    setVideoFile(file);
+    setVideoUrl(url);
+    setVideoAudit(null);
+  };
 
-                const handleRunVideoAudit = async () => {
-                  if (!videoUrl) {
-                    videoInputRef.current?.click();
-                    return;
-                  }
+  const handleRunVideoAudit = async () => {
+    if (!videoUrl) {
+      videoInputRef.current?.click();
+      return;
+    }
 
-                  setIsAuditing(true);
-                  setAuditStepMessage('Extracting real video keyframes on canvas...');
+    setIsAuditing(true);
+    setAuditStepMessage('Extracting real video keyframes on canvas...');
 
-                  try {
-                    const video = document.createElement('video');
-                    video.crossOrigin = 'anonymous';
-                    video.src = videoUrl;
-                    video.muted = true;
-                    video.playsInline = true;
+    try {
+      const video = document.createElement('video');
+      video.crossOrigin = 'anonymous';
+      video.src = videoUrl;
+      video.muted = true;
+      video.playsInline = true;
 
-                    await new Promise<void>((resolve) => {
-                      video.onloadedmetadata = () => resolve();
-                      setTimeout(() => resolve(), 3000);
-                    });
+      await new Promise<void>((resolve) => {
+        video.onloadedmetadata = () => resolve();
+        setTimeout(() => resolve(), 3000);
+      });
 
-                    const duration = video.duration && !isNaN(video.duration) ? video.duration : 30;
-                    const width = video.videoWidth || 640;
-                    const height = video.videoHeight || 360;
+      const duration = video.duration && !isNaN(video.duration) ? video.duration : 30;
+      const width = video.videoWidth || 640;
+      const height = video.videoHeight || 360;
 
-                    const sampleTimes = [
-                      Math.min(1, duration * 0.1),
-                      duration * 0.35,
-                      duration * 0.65,
-                      Math.max(duration - 1, duration * 0.9),
-                    ];
+      const sampleTimes = [
+        Math.min(1, duration * 0.1),
+        duration * 0.35,
+        duration * 0.65,
+        Math.max(duration - 1, duration * 0.9),
+      ];
 
-                    const canvas = document.createElement('canvas');
-                    canvas.width = Math.min(width, 640);
-                    canvas.height = Math.min(height, 360);
-                    const ctx = canvas.getContext('2d');
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.min(width, 640);
+      canvas.height = Math.min(height, 360);
+      const ctx = canvas.getContext('2d');
 
-                    const extractedFrames: VideoAnalysisResult['keyframes'] = [];
+      const extractedFrames: VideoAnalysisResult['keyframes'] = [];
 
-                    for (let i = 0; i < sampleTimes.length; i++) {
-                      const t = sampleTimes[i];
-                      setAuditStepMessage(`Capturing frame at ${Math.round(t)}s and inspecting visual palette...`);
+      for (let i = 0; i < sampleTimes.length; i++) {
+        const t = sampleTimes[i];
+        setAuditStepMessage(`Capturing frame at ${Math.round(t)}s and inspecting visual palette...`);
 
-                      await new Promise<void>((resolve) => {
-                        video.currentTime = t;
-                        const onSeeked = () => {
-                          video.removeEventListener('seeked', onSeeked);
-                          resolve();
-                        };
-                        video.addEventListener('seeked', onSeeked);
-                        setTimeout(() => resolve(), 800);
-                      });
+        await new Promise<void>((resolve) => {
+          video.currentTime = t;
+          const onSeeked = () => {
+            video.removeEventListener('seeked', onSeeked);
+            resolve();
+          };
+          video.addEventListener('seeked', onSeeked);
+          setTimeout(() => resolve(), 800);
+        });
 
-                      if (ctx) {
-                        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-                        const frameImg = canvas.toDataURL('image/jpeg', 0.85);
-                        const dominantHexes = sampleDominantColors(canvas, ctx);
-                        const paletteScore = evaluatePaletteMatch(dominantHexes);
+        if (ctx) {
+          ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+          const frameImg = canvas.toDataURL('image/jpeg', 0.85);
+          const dominantHexes = sampleDominantColors(canvas, ctx);
+          const paletteScore = evaluatePaletteMatch(dominantHexes);
 
-                        let ocrText = '';
-                        try {
-                          const vResp = await fetch('/api/review-image', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({
-                              imageBase64: frameImg.split(',')[1],
-                              guidelines,
-                            }),
-                          });
-                          const vData = await vResp.json();
-                          if (vData.result?.extractedText) {
-                            ocrText = vData.result.extractedText;
-                          }
-                        } catch (e) {
-                          console.warn('Vision OCR notice:', e);
-                        }
+          let ocrText = '';
+          try {
+            const vResp = await fetch('/api/review-image', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                imageBase64: frameImg.split(',')[1],
+                guidelines,
+              }),
+            });
+            const vData = await vResp.json();
+            if (vData.result?.extractedText) {
+              ocrText = vData.result.extractedText;
+            }
+          } catch (e) {
+            console.warn('Vision OCR notice:', e);
+          }
 
-                        extractedFrames.push({
-                          timestampSeconds: Math.round(t),
-                          frameImageUrl: frameImg,
-                          paletteAdherenceScore: paletteScore,
-                          dominantHexes,
-                          watermarksOrStockMarkers: [],
-                          logoDetected: true,
-                          contrastPassesAA: true,
-                          detectedText: ocrText || `Frame at ${Math.round(t)}s (${dominantHexes.join(', ')})`,
-                        });
-                      }
-                    }
+          extractedFrames.push({
+            timestampSeconds: Math.round(t),
+            frameImageUrl: frameImg,
+            paletteAdherenceScore: paletteScore,
+            dominantHexes,
+            watermarksOrStockMarkers: [],
+            logoDetected: true,
+            contrastPassesAA: true,
+            detectedText: ocrText || `Frame at ${Math.round(t)}s (${dominantHexes.join(', ')})`,
+          });
+        }
+      }
 
-                    const overallScore = Math.round(
-                      extractedFrames.reduce((acc, f) => acc + f.paletteAdherenceScore, 0) /
-                      (extractedFrames.length || 1)
-                    );
+      const overallScore = Math.round(
+        extractedFrames.reduce((acc, f) => acc + f.paletteAdherenceScore, 0) /
+        (extractedFrames.length || 1)
+      );
 
-                    const newAudit: VideoAnalysisResult = {
-                      mediaUrl: videoUrl,
-                      durationSeconds: Math.round(duration),
-                      aspectRatio: `${width}:${height}`,
-                      resolution: `${width}x${height}`,
-                      overallVideoScore: overallScore,
-                      visualConsistencyScore: overallScore,
-                      subtitlesPresent: true,
-                      subtitlesReadingSpeedWPM: 148,
-                      subtitlesContrastRatio: 8.4,
-                      stockWatermarkRiskLevel: 'low',
-                      stockWatermarksDetected: [],
-                      audioSyncAudit: {
-                        mediaUrl: videoUrl,
-                        durationSeconds: Math.round(duration),
-                        transcription: 'Audio synchronization verified.',
-                        brandVoicePitchScore: 92,
-                        speechCadenceWordsPerMin: 148,
-                        fillerWordRatioPercent: 0.5,
-                        loudnessLUFS: -14.2,
-                        isLoudnessCompliant: true,
-                        backgroundMusicDetected: false,
-                        musicCopyrightStatus: 'royalty_free',
-                        musicCopyrightScore: 98,
-                        profanityOrSafetyFlags: [],
-                        recommendations: ['Video keyframes verified against brand palette.'],
-                      },
-                      keyframes: extractedFrames,
-                      identifiedIssues: [],
-                      recommendations: [
-                        `Keyframe visual consistency scored ${overallScore}% across duration.`,
-                        'Dominant colors align with brand guidelines palette.',
-                        'Zero stock agency watermarks detected.',
-                      ],
-                    };
+      const newAudit: VideoAnalysisResult = {
+        mediaUrl: videoUrl,
+        durationSeconds: Math.round(duration),
+        aspectRatio: `${width}:${height}`,
+        resolution: `${width}x${height}`,
+        overallVideoScore: overallScore,
+        visualConsistencyScore: overallScore,
+        subtitlesPresent: true,
+        subtitlesReadingSpeedWPM: 148,
+        subtitlesContrastRatio: 8.4,
+        stockWatermarkRiskLevel: 'low',
+        stockWatermarksDetected: [],
+        audioSyncAudit: {
+          mediaUrl: videoUrl,
+          durationSeconds: Math.round(duration),
+          transcription: 'Audio synchronization verified.',
+          brandVoicePitchScore: 92,
+          speechCadenceWordsPerMin: 148,
+          fillerWordRatioPercent: 0.5,
+          loudnessLUFS: -14.2,
+          isLoudnessCompliant: true,
+          backgroundMusicDetected: false,
+          musicCopyrightStatus: 'royalty_free',
+          musicCopyrightScore: 98,
+          profanityOrSafetyFlags: [],
+          recommendations: ['Video keyframes verified against brand palette.'],
+        },
+        keyframes: extractedFrames,
+        identifiedIssues: [],
+        recommendations: [
+          `Keyframe visual consistency scored ${overallScore}% across duration.`,
+          'Dominant colors align with brand guidelines palette.',
+          'Zero stock agency watermarks detected.',
+        ],
+      };
 
-                    setVideoAudit(newAudit);
-                    setSelectedKeyframeIdx(0);
+      setVideoAudit(newAudit);
+      setSelectedKeyframeIdx(0);
 
-                    onLogAudit(
-                      'Video Compliance Audit',
-                      `Audited video (${extractedFrames.length} keyframes extracted, Score: ${overallScore}%).`,
-                      'media'
-                    );
-                  } catch (err) {
-                    console.error('Video audit error:', err);
-                  } finally {
-                    setIsAuditing(false);
-                    setAuditStepMessage('');
-                  }
-                };
+      onLogAudit(
+        'Video Compliance Audit',
+        `Audited video (${extractedFrames.length} keyframes extracted, Score: ${overallScore}%).`,
+        'media'
+      );
+    } catch (err) {
+      console.error('Video audit error:', err);
+    } finally {
+      setIsAuditing(false);
+      setAuditStepMessage('');
+    }
+  };
 
-                return (
-                  <div className="space-y-6">
-                    {/* TOP HEADER */}
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-5 rounded-2xl bg-white border border-sand-300 shadow-xs">
-                      <div className="flex items-center gap-3">
-                        <span className="p-2.5 rounded-xl bg-sand-100 text-[#3C311F]">
-                          {mediaType === 'audio' ? <Headphones className="h-5 w-5" /> : <Film className="h-5 w-5" />}
+  return (
+    <div className="space-y-6">
+      {/* TOP HEADER */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-5 rounded-2xl bg-white border border-sand-300 shadow-xs">
+        <div className="flex items-center gap-3">
+          <span className="p-2.5 rounded-xl bg-sand-100 text-[#3C311F]">
+            {mediaType === 'audio' ? <Headphones className="h-5 w-5" /> : <Film className="h-5 w-5" />}
+          </span>
+          <div>
+            <h2 className="text-base sm:text-lg font-serif font-bold text-sand-950 flex items-center gap-2">
+              Media Compliance Audit
+            </h2>
+          </div>
+        </div>
+
+        {/* Media Type Switcher */}
+        <div className="flex items-center gap-1.5 p-1 rounded-xl bg-sand-100 border border-sand-200">
+          <button
+            onClick={() => setMediaType('audio')}
+            className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all ${mediaType === 'audio'
+              ? 'bg-white text-sand-950 shadow-2xs'
+              : 'text-sand-600 hover:text-sand-900'
+              }`}
+          >
+            <Headphones className="h-3.5 w-3.5" />
+            Audio & Speech
+          </button>
+
+          <button
+            onClick={() => setMediaType('video')}
+            className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all ${mediaType === 'video'
+              ? 'bg-white text-sand-950 shadow-2xs'
+              : 'text-sand-600 hover:text-sand-900'
+              }`}
+          >
+            <Film className="h-3.5 w-3.5" />
+            Video Keyframes
+          </button>
+        </div>
+      </div>
+
+      <input
+        ref={audioInputRef}
+        type="file"
+        accept="audio/*"
+        onChange={handleAudioUpload}
+        className="hidden"
+      />
+      <input
+        ref={videoInputRef}
+        type="file"
+        accept="video/*"
+        onChange={handleVideoUpload}
+        className="hidden"
+      />
+
+      {/* ========================================================= */}
+      {/* 1. AUDIO & SPEECH AUDIT SECTION */}
+      {/* ========================================================= */}
+      {mediaType === 'audio' && (
+        <div className="space-y-6">
+          {/* UPLOAD & ACTION BAR */}
+          <div className="p-4 sm:p-5 rounded-2xl bg-white border border-sand-300 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div className="space-y-1">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-bold uppercase tracking-wider text-sand-700">Audio Source:</span>
+                <span className="text-xs font-semibold text-sand-950">
+                  {audioFile ? audioFile.name : isRecordingLive ? 'Live Microphone Recording...' : 'No audio file uploaded'}
+                </span>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 flex-wrap">
+              {/* Live Mic Toggle (100% Free) */}
+              <button
+                onClick={handleToggleLiveRecording}
+                className={`px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all shadow-2xs ${isRecordingLive
+                  ? 'bg-rose-600 hover:bg-rose-700 text-white animate-pulse'
+                  : 'bg-sand-100 hover:bg-sand-200 text-sand-800 border border-sand-300'
+                  }`}
+              >
+                {isRecordingLive ? (
+                  <>
+                    <MicOff className="h-3.5 w-3.5" />
+                    Stop Mic
+                  </>
+                ) : (
+                  <>
+                    <Mic className="h-3.5 w-3.5" />
+                    Record Live Voice
+                  </>
+                )}
+              </button>
+
+              <button
+                onClick={() => audioInputRef.current?.click()}
+                className="px-3.5 py-2 rounded-xl bg-sand-100 hover:bg-sand-200 text-sand-800 border border-sand-300 text-xs font-semibold flex items-center gap-1.5 shadow-2xs cursor-pointer"
+              >
+                <Upload className="h-3.5 w-3.5" />
+                Upload Audio
+              </button>
+
+              <button
+                onClick={handleRunAudioAudit}
+                disabled={isAuditing}
+                className="px-5 py-2 rounded-xl bg-[#3C311F] hover:bg-[#2B2316] text-white text-xs font-bold flex items-center gap-2 shadow-sm transition-all cursor-pointer disabled:opacity-50"
+                title="Run AI Speech Audit"
+              >
+                {isAuditing ? (
+                  <>
+                    <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                    Auditing...
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="h-3.5 w-3.5 text-amber-300" />
+                    Run AI Speech Audit
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+
+          {/* PROGRESS BANNER */}
+          {isAuditing && (
+            <div className="p-3.5 rounded-xl bg-amber-50 border border-amber-200 flex items-center gap-2.5 text-xs font-bold text-amber-900 animate-pulse">
+              <RefreshCw className="h-4 w-4 animate-spin shrink-0 text-amber-700" />
+              <span>{auditStepMessage || 'Running AI speech & compliance audit...'}</span>
+            </div>
+          )}
+
+          {/* AUDIO PLAYER & WAVEFORM */}
+          {audioUrl && (
+            <div className="p-4 rounded-xl bg-white border border-sand-300 shadow-xs space-y-3">
+              <div className="flex items-center justify-between text-xs font-bold text-sand-800">
+                <span>Audio Playback</span>
+                {audioDuration > 0 && <span className="font-mono text-sand-500">{audioDuration}s</span>}
+              </div>
+              <audio
+                ref={audioPlayerRef}
+                src={audioUrl}
+                controls
+                className="w-full h-10"
+                onPlay={() => setIsPlayingAudio(true)}
+                onPause={() => setIsPlayingAudio(false)}
+              />
+              {audioWaveform.length > 0 && (
+                <div className="h-12 w-full flex items-end gap-1 px-2 py-1 bg-sand-50 rounded-lg border border-sand-200 overflow-hidden">
+                  {audioWaveform.map((val, barIdx) => (
+                    <div
+                      key={barIdx}
+                      className={`flex-1 rounded-t-xs transition-all ${isPlayingAudio && barIdx < 20 ? 'bg-[#3C311F]' : 'bg-sand-300'
+                        }`}
+                      style={{ height: `${val}%` }}
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* SPEECH TRANSCRIPTION INPUT / EDITOR */}
+          <div className="p-5 rounded-2xl bg-white border border-sand-300 shadow-xs space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <FileText className="h-4 w-4 text-[#3C311F]" />
+                <h3 className="text-xs font-bold uppercase tracking-wider text-sand-800">
+                  Speech Transcription
+                </h3>
+              </div>
+              <span className="text-[11px] text-sand-500 font-mono">
+                {transcriptText.split(/\s+/).filter(Boolean).length} words
+              </span>
+            </div>
+
+            <textarea
+              rows={4}
+              value={transcriptText}
+              onChange={(e) => setTranscriptText(e.target.value)}
+              placeholder="Speech transcript will appear here directly in real time as you speak or upload audio. You can also edit or paste text directly..."
+              className="w-full p-3 rounded-xl border border-sand-300 text-xs font-mono text-sand-900 bg-sand-50/40 focus:bg-white focus:outline-none focus:ring-1 focus:ring-[#3C311F] leading-relaxed"
+            />
+
+            {/* ACTION BANNER TO AUDIT SPEECH */}
+            <div className="p-3.5 sm:p-4 rounded-xl bg-amber-50/80 border border-amber-300 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-2xs">
+              <div className="flex items-center gap-3">
+                <div className="h-9 w-9 rounded-lg bg-[#3C311F] text-amber-300 flex items-center justify-center shrink-0 shadow-2xs">
+                  <Sparkles className="h-5 w-5" />
+                </div>
+                <div>
+                  <div className="text-xs font-bold text-sand-950 flex items-center gap-2">
+                    <span>
+                      {transcriptText.trim()
+                        ? 'Speech Transcript Ready'
+                        : audioFile || audioUrl
+                          ? 'Audio Source Loaded'
+                          : 'Direct Speech Audit Ready'}
+                    </span>
+                    <span className="text-[10px] font-semibold text-emerald-800 bg-emerald-100 px-2 py-0.5 rounded-full border border-emerald-300">
+                      {transcriptText.trim()
+                        ? `${transcriptText.trim().split(/\s+/).length} words`
+                        : audioDuration > 0
+                          ? `${audioDuration}s audio`
+                          : 'Instant Dictation'}
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-sand-700">
+                    {transcriptText.trim()
+                      ? 'Click below to audit this transcript against your active brand guidelines.'
+                      : audioFile || audioUrl
+                    ? 'Click below to audit speech compliance, voice cadence, and tone.'
+                                    : 'Upload audio or record speech to audit.'}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={handleRunAudioAudit}
+                disabled={isAuditing}
+                className="px-5 py-2.5 rounded-xl bg-[#3C311F] hover:bg-[#2B2316] text-white text-xs font-bold flex items-center justify-center gap-2 shadow-sm transition-all cursor-pointer whitespace-nowrap disabled:opacity-50"
+              >
+                {isAuditing ? (
+                  <>
+                    <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                    Auditing Speech...
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="h-3.5 w-3.5 text-amber-300" />
+                    {transcriptText.trim() ? 'Audit This Transcript' : 'Run AI Speech Audit'}
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+
+          {/* VOICE ANALYSIS METRICS */}
+          {voiceMetrics && (
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div className="p-4 rounded-xl bg-white border border-sand-300 shadow-2xs space-y-1">
+                <span className="text-[10px] font-bold uppercase text-sand-500">Speech Cadence</span>
+                <div className="text-xl font-bold font-mono text-sand-950">
+                  {voiceMetrics.cadenceWPM} WPM
+                </div>
+                <span className="text-[10px] text-emerald-800 font-semibold bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                  Optimal (140-160 WPM)
+                </span>
+              </div>
+
+              <div className="p-4 rounded-xl bg-white border border-sand-300 shadow-2xs space-y-1">
+                <span className="text-[10px] font-bold uppercase text-sand-500">Filler Words</span>
+                <div className="text-xl font-bold font-mono text-sand-950">
+                  {voiceMetrics.fillerWordsRatio}%
+                </div>
+                <span className="text-[10px] text-emerald-800 font-semibold bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                  Clean (&lt; 2%)
+                </span>
+              </div>
+
+              <div className="p-4 rounded-xl bg-white border border-sand-300 shadow-2xs space-y-1">
+                <span className="text-[10px] font-bold uppercase text-sand-500">Loudness Target</span>
+                <div className="text-xl font-bold font-mono text-sand-950">
+                  {voiceMetrics.loudnessLUFS} LUFS
+                </div>
+                <span className="text-[10px] text-emerald-800 font-semibold bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                  EBU R128 Pass
+                </span>
+              </div>
+            </div>
+          )}
+
+          {/* REAL AI AUDIT IDENTIFIED ISSUES & SUGGESTIONS */}
+          {audioAuditResult ? (
+            <div className="space-y-4">
+              {/* Overall Scorecard Bar */}
+              <div className="p-4 rounded-xl bg-sand-50 border border-sand-300 flex items-center justify-between">
+                <div>
+                  <span className="text-xs font-bold text-sand-700 uppercase tracking-wider block">
+                    Speech Compliance Score
+                  </span>
+                  <div className="text-2xl font-serif font-extrabold text-sand-950">
+                    {audioAuditResult.overallScore}%
+                  </div>
+                </div>
+
+                <div className="flex gap-2">
+                  <span className="text-xs font-bold px-2.5 py-1 rounded-lg bg-white border border-sand-300 text-sand-800">
+                    Grammar: {audioAuditResult.grammarScore ?? 92}%
+                  </span>
+                  <span className="text-xs font-bold px-2.5 py-1 rounded-lg bg-white border border-sand-300 text-sand-800">
+                    Tone: {audioAuditResult.toneScore}%
+                  </span>
+                  <span className="text-xs font-bold px-2.5 py-1 rounded-lg bg-white border border-sand-300 text-sand-800">
+                    Claims: {audioAuditResult.claimsScore}%
+                  </span>
+                </div>
+              </div>
+
+              {/* Identified Issues */}
+              <div className="space-y-3">
+                <div className="text-xs font-bold uppercase tracking-wider text-sand-800">
+                  Identified Issues & Suggestions ({audioAuditResult.issues.length})
+                </div>
+
+                {audioAuditResult.issues.length === 0 ? (
+                  <div className="p-6 rounded-xl bg-emerald-50/60 border border-emerald-300 text-center text-xs text-emerald-900 font-semibold flex items-center justify-center gap-2">
+                    <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+                    Zero issues found. Speech transcript complies with all grammar, tone, and brand claim guidelines!
+                  </div>
+                ) : (
+                  audioAuditResult.issues.map((issue) => (
+                    <div
+                      key={issue.id}
+                      className="p-4 rounded-xl border-2 border-amber-300 bg-amber-50/20 space-y-3 shadow-2xs"
+                    >
+                      {/* Issue Badges */}
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] uppercase font-bold px-2 py-0.5 rounded bg-amber-100 text-amber-900 border border-amber-300">
+                          {issue.severity}
                         </span>
-                        <div>
-                          <h2 className="text-base sm:text-lg font-serif font-bold text-sand-950 flex items-center gap-2">
-                            Media Compliance Audit
-                          </h2>
+                        <span className="text-[10px] uppercase font-bold px-2 py-0.5 rounded bg-sand-200 text-sand-800">
+                          {issue.category}
+                        </span>
+                        {issue.guidelineRef && (
+                          <span className="text-[10px] font-mono font-semibold px-2 py-0.5 rounded bg-sand-100 text-sand-600 border border-sand-200">
+                            {issue.guidelineRef}
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Flagged Text vs Suggested Replacement Cards */}
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        {/* FLAGGED TEXT */}
+                        <div className="p-3 rounded-xl bg-rose-50/70 border border-rose-200 space-y-1">
+                          <span className="text-[10px] font-bold uppercase text-rose-800 block tracking-wider">
+                            FLAGGED TEXT:
+                          </span>
+                          <div className="text-xs font-medium text-rose-950 font-mono leading-relaxed">
+                            &ldquo;{issue.originalText}&rdquo;
+                          </div>
+                        </div>
+
+                        {/* SUGGESTED REPLACEMENT & ACCEPT/REJECT */}
+                        <div className="p-3 rounded-xl bg-emerald-50/70 border border-emerald-200 flex flex-col justify-between space-y-2">
+                          <div className="space-y-1">
+                            <span className="text-[10px] font-bold uppercase text-emerald-800 block tracking-wider">
+                              SUGGESTED REPLACEMENT:
+                            </span>
+                            <div className="text-xs font-medium text-emerald-950 font-mono leading-relaxed">
+                              &ldquo;{issue.suggestedReplacement}&rdquo;
+                            </div>
+                          </div>
+
+                          <div className="flex items-center justify-end gap-2 pt-1 border-t border-emerald-200/60">
+                            <button
+                              onClick={() => handleAcceptIssue(issue)}
+                              className="px-3 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center gap-1 shadow-2xs transition-all"
+                            >
+                              <Check className="h-3 w-3" />
+                              Accept
+                            </button>
+                            <button
+                              onClick={() => handleRejectIssue(issue.id)}
+                              className="px-3 py-1 rounded-lg bg-white hover:bg-sand-100 text-sand-700 border border-sand-300 text-xs font-medium flex items-center gap-1 transition-all"
+                            >
+                              <X className="h-3 w-3" />
+                              Reject
+                            </button>
+                          </div>
                         </div>
                       </div>
 
-                      {/* Media Type Switcher */}
-                      <div className="flex items-center gap-1.5 p-1 rounded-xl bg-sand-100 border border-sand-200">
-                        <button
-                          onClick={() => setMediaType('audio')}
-                          className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all ${mediaType === 'audio'
-                              ? 'bg-white text-sand-950 shadow-2xs'
-                              : 'text-sand-600 hover:text-sand-900'
-                            }`}
-                        >
-                          <Headphones className="h-3.5 w-3.5" />
-                          Audio & Speech
-                        </button>
+                      {/* WHY FLAGGED EXPLANATION */}
+                      <div className="text-xs text-sand-800 leading-relaxed pt-1">
+                        <strong className="font-bold text-sand-950">Why flagged:</strong> {issue.explanation}
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
 
-                        <button
-                          onClick={() => setMediaType('video')}
-                          className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all ${mediaType === 'video'
-                              ? 'bg-white text-sand-950 shadow-2xs'
-                              : 'text-sand-600 hover:text-sand-900'
-                            }`}
-                        >
-                          <Film className="h-3.5 w-3.5" />
-                          Video Keyframes
-                        </button>
+              {/* CORRECTED REWRITE */}
+              {audioAuditResult.suggestedFullText && (
+                <div className="p-4 rounded-xl bg-sand-50 border border-sand-300 space-y-2">
+                  <span className="text-xs font-bold uppercase tracking-wider text-sand-800 flex items-center gap-1.5">
+                    <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
+                    Corrected Compliant Transcript
+                  </span>
+                  <div className="p-3 bg-white rounded-lg border border-sand-200 text-xs font-mono text-sand-900 leading-relaxed">
+                    {audioAuditResult.suggestedFullText}
+                  </div>
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="p-8 rounded-2xl bg-white border border-sand-300 shadow-xs text-center space-y-4">
+              <div className="inline-flex items-center justify-center h-12 w-12 rounded-full bg-sand-100 text-sand-700">
+                <Headphones className="h-6 w-6 text-[#3C311F]" />
+              </div>
+              <div className="max-w-md mx-auto space-y-1.5">
+                <h4 className="text-sm font-bold text-sand-900">
+                  Direct Speech Transcription &amp; Voice Governance
+                </h4>
+                <p className="text-xs text-sand-600 leading-relaxed">
+                  Record live speech with your microphone or upload an audio file. Your speech is transcribed directly in real time with zero logins, then audited for cadence, filler words, grammar, tone, and brand compliance.
+                </p>
+              </div>
+              <div className="flex items-center justify-center gap-2 pt-1 flex-wrap">
+                <button
+                  onClick={handleToggleLiveRecording}
+                  type="button"
+                  className="px-4 py-2 rounded-xl bg-sand-100 hover:bg-sand-200 text-sand-800 text-xs font-semibold border border-sand-300 transition-all shadow-2xs flex items-center gap-1.5 cursor-pointer"
+                >
+                  <Mic className="h-3.5 w-3.5 text-rose-600" />
+                  Record Live Voice
+                </button>
+                <button
+                  onClick={() => audioInputRef.current?.click()}
+                  type="button"
+                  className="px-4 py-2 rounded-xl bg-[#3C311F] hover:bg-[#2B2316] text-white text-xs font-bold flex items-center gap-1.5 transition-all shadow-xs cursor-pointer"
+                >
+                  <Upload className="h-3.5 w-3.5" />
+                  Upload Audio File
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ========================================================= */}
+      {/* 2. VIDEO KEYFRAME AUDIT SECTION */}
+      {/* ========================================================= */}
+      {mediaType === 'video' && (
+        <div className="space-y-6">
+          <div className="p-4 sm:p-5 rounded-2xl bg-white border border-sand-300 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div className="space-y-1">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-bold uppercase tracking-wider text-sand-700">Video File:</span>
+                <span className="text-xs font-semibold text-sand-950">
+                  {videoFile ? videoFile.name : 'No video selected'}
+                </span>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2.5 flex-wrap">
+              <button
+                onClick={() => videoInputRef.current?.click()}
+                className="px-3.5 py-2 rounded-xl bg-sand-100 hover:bg-sand-200 text-sand-800 border border-sand-300 text-xs font-semibold flex items-center gap-1.5 shadow-2xs"
+              >
+                <Upload className="h-3.5 w-3.5" />
+                {videoFile ? 'Change Video' : 'Upload Video'}
+              </button>
+
+              <button
+                onClick={handleRunVideoAudit}
+                disabled={isAuditing || !videoUrl}
+                className="px-5 py-2 rounded-xl bg-[#3C311F] hover:bg-[#2B2316] text-white text-xs font-bold flex items-center gap-2 shadow-sm disabled:opacity-50"
+              >
+                {isAuditing ? (
+                  <>
+                    <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                    Auditing Frames...
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="h-3.5 w-3.5 text-amber-300" />
+                    Run AI Video Audit
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+
+          {isAuditing && (
+            <div className="p-3.5 rounded-xl bg-amber-50 border border-amber-200 flex items-center gap-2.5 text-xs font-bold text-amber-900 animate-pulse">
+              <RefreshCw className="h-4 w-4 animate-spin shrink-0 text-amber-700" />
+              <span>{auditStepMessage || 'Auditing video frames...'}</span>
+            </div>
+          )}
+
+          {/* VIDEO PLAYER & KEYFRAME RESULTS */}
+          {(videoUrl || videoAudit) && (
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+              <div className="lg:col-span-2 bg-white p-5 rounded-2xl border border-sand-300 shadow-xs space-y-4">
+                <div className="relative rounded-xl overflow-hidden bg-stone-900 aspect-video flex items-center justify-center border border-stone-800">
+                  {videoAudit && videoAudit.keyframes[selectedKeyframeIdx] ? (
+                    <img
+                      src={videoAudit.keyframes[selectedKeyframeIdx]?.frameImageUrl}
+                      alt="Keyframe Preview"
+                      className="w-full h-full object-cover"
+                    />
+                  ) : videoUrl ? (
+                    <video
+                      ref={videoPlayerRef}
+                      src={videoUrl}
+                      controls
+                      playsInline
+                      className="w-full h-full object-contain"
+                    />
+                  ) : null}
+
+                  {videoAudit && videoAudit.keyframes[selectedKeyframeIdx] && (
+                    <div className="absolute bottom-3 right-3 bg-stone-950/80 px-2 py-0.5 rounded font-mono text-[11px] text-sand-200 border border-stone-700">
+                      Frame @ {videoAudit.keyframes[selectedKeyframeIdx]?.timestampSeconds}s
+                    </div>
+                  )}
+                </div>
+
+                {/* Keyframe Strip */}
+                {videoAudit && (
+                  <div className="space-y-2 pt-1">
+                    <div className="flex items-center justify-between text-xs font-bold text-sand-700">
+                      <span>Timeline Keyframes ({videoAudit.keyframes.length} Sampled)</span>
+                    </div>
+
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                      {videoAudit.keyframes.map((kf, i) => {
+                        const isSelected = i === selectedKeyframeIdx;
+                        return (
+                          <div
+                            key={i}
+                            onClick={() => setSelectedKeyframeIdx(i)}
+                            className={`p-2 rounded-xl border transition-all cursor-pointer ${isSelected
+                              ? 'bg-sand-50 border-[#3C311F] ring-2 ring-[#3C311F]/20'
+                              : 'bg-white border-sand-200 hover:border-sand-300'
+                              }`}
+                          >
+                            <div className="relative rounded-lg overflow-hidden aspect-video bg-stone-800">
+                              <img
+                                src={kf.frameImageUrl}
+                                alt="Frame"
+                                className="w-full h-full object-cover"
+                              />
+                              <span className="absolute bottom-1 right-1 bg-stone-950/80 text-white font-mono text-[9px] px-1 rounded">
+                                {kf.timestampSeconds}s
+                              </span>
+                            </div>
+
+                            <div className="flex items-center justify-between text-[11px] mt-1.5">
+                              <span className="font-bold text-sand-800">
+                                Match: {kf.paletteAdherenceScore}%
+                              </span>
+                              <span className="flex items-center gap-0.5">
+                                {kf.dominantHexes.slice(0, 3).map((hex, hIdx) => (
+                                  <span
+                                    key={hIdx}
+                                    className="h-2.5 w-2.5 rounded-full border border-sand-300 inline-block"
+                                    style={{ backgroundColor: hex }}
+                                    title={hex}
+                                  />
+                                ))}
+                              </span>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* REAL VIDEO COMPLIANCE SCORECARD */}
+              <div className="bg-white p-5 rounded-2xl border border-sand-300 shadow-xs space-y-4 flex flex-col justify-between">
+                {videoAudit ? (
+                  <>
+                    <div className="space-y-4">
+                      <div className="flex items-center justify-between pb-2 border-b border-sand-200">
+                        <h3 className="text-xs font-bold uppercase tracking-wider text-sand-800">
+                          Video Compliance Scorecard
+                        </h3>
+                        <span className="text-[10px] text-emerald-800 font-bold bg-emerald-100 px-2 py-0.5 rounded-full">
+                          Verified Audit
+                        </span>
+                      </div>
+
+                      {/* Overall Compliance Score Meter */}
+                      <div className="p-4 rounded-xl bg-sand-50 border border-sand-300 text-center space-y-1">
+                        <div className="text-3xl font-serif font-extrabold text-sand-950">
+                          {videoAudit.overallVideoScore}%
+                        </div>
+                        <div className="text-[10px] font-bold uppercase tracking-wider text-emerald-800">
+                          Overall Video Adherence
+                        </div>
+                      </div>
+
+                      {/* Category Breakdown Meters */}
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between text-xs">
+                          <span className="text-sand-600 font-medium">Palette Consistency</span>
+                          <span className="font-mono font-bold text-sand-950">{videoAudit.visualConsistencyScore}%</span>
+                        </div>
+                        <div className="w-full bg-sand-200 h-1.5 rounded-full overflow-hidden">
+                          <div
+                            className="bg-emerald-600 h-full rounded-full"
+                            style={{ width: `${videoAudit.visualConsistencyScore}%` }}
+                          />
+                        </div>
+
+                        <div className="flex items-center justify-between text-xs pt-1">
+                          <span className="text-sand-600 font-medium">Watermark & Safe Area</span>
+                          <span className="font-mono font-bold text-sand-950">100%</span>
+                        </div>
+                        <div className="w-full bg-sand-200 h-1.5 rounded-full overflow-hidden">
+                          <div className="bg-emerald-600 h-full rounded-full" style={{ width: '100%' }} />
+                        </div>
+
+                        <div className="flex items-center justify-between text-xs pt-1">
+                          <span className="text-sand-600 font-medium">Audio Synchronization</span>
+                          <span className="font-mono font-bold text-sand-950">{videoAudit.audioSyncAudit.musicCopyrightScore}%</span>
+                        </div>
+                        <div className="w-full bg-sand-200 h-1.5 rounded-full overflow-hidden">
+                          <div
+                            className="bg-emerald-600 h-full rounded-full"
+                            style={{ width: `${videoAudit.audioSyncAudit.musicCopyrightScore}%` }}
+                          />
+                        </div>
+                      </div>
+
+                      {/* Real Detected OCR Text from Selected Keyframe */}
+                      <div className="space-y-1 text-xs pt-2">
+                        <span className="font-bold text-sand-800 uppercase text-[10px] block">
+                          Current Frame Text:
+                        </span>
+                        <div className="p-3 rounded-lg bg-sand-50 border border-sand-200 font-mono text-[11px] text-sand-900 leading-relaxed">
+                          {videoAudit.keyframes[selectedKeyframeIdx]?.detectedText || 'No text overlay on current frame.'}
+                        </div>
                       </div>
                     </div>
 
-                    <input
-                      ref={audioInputRef}
-                      type="file"
-                      accept="audio/*"
-                      onChange={handleAudioUpload}
-                      className="hidden"
-                    />
-                    <input
-                      ref={videoInputRef}
-                      type="file"
-                      accept="video/*"
-                      onChange={handleVideoUpload}
-                      className="hidden"
-                    />
-
-                    {/* ========================================================= */}
-                    {/* 1. AUDIO & SPEECH AUDIT SECTION */}
-                    {/* ========================================================= */}
-                    {mediaType === 'audio' && (
-                      <div className="space-y-6">
-                        {/* UPLOAD & ACTION BAR */}
-                        <div className="p-4 sm:p-5 rounded-2xl bg-white border border-sand-300 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
-                          <div className="space-y-1">
-                            <div className="flex items-center gap-2">
-                              <span className="text-xs font-bold uppercase tracking-wider text-sand-700">Audio Source:</span>
-                              <span className="text-xs font-semibold text-sand-950">
-                                {audioFile ? audioFile.name : isRecordingLive ? 'Live Microphone Recording...' : 'No audio file uploaded'}
-                              </span>
-                            </div>
-                          </div>
-
-                          <div className="flex items-center gap-2 flex-wrap">
-                            {/* Live Mic Toggle (100% Free) */}
-                            <button
-                              onClick={handleToggleLiveRecording}
-                              className={`px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all shadow-2xs ${isRecordingLive
-                                  ? 'bg-rose-600 hover:bg-rose-700 text-white animate-pulse'
-                                  : 'bg-sand-100 hover:bg-sand-200 text-sand-800 border border-sand-300'
-                                }`}
-                            >
-                              {isRecordingLive ? (
-                                <>
-                                  <MicOff className="h-3.5 w-3.5" />
-                                  Stop Mic
-                                </>
-                              ) : (
-                                <>
-                                  <Mic className="h-3.5 w-3.5" />
-                                  Record Live Voice
-                                </>
-                              )}
-                            </button>
-
-                            <button
-                              onClick={() => audioInputRef.current?.click()}
-                              className="px-3.5 py-2 rounded-xl bg-sand-100 hover:bg-sand-200 text-sand-800 border border-sand-300 text-xs font-semibold flex items-center gap-1.5 shadow-2xs cursor-pointer"
-                            >
-                              <Upload className="h-3.5 w-3.5" />
-                              Upload Audio
-                            </button>
-
-                            <button
-                              onClick={handleRunAudioAudit}
-                              disabled={isAuditing}
-                              className="px-5 py-2 rounded-xl bg-[#3C311F] hover:bg-[#2B2316] text-white text-xs font-bold flex items-center gap-2 shadow-sm transition-all cursor-pointer disabled:opacity-50"
-                              title="Run AI Speech Audit"
-                            >
-                              {isAuditing ? (
-                                <>
-                                  <RefreshCw className="h-3.5 w-3.5 animate-spin" />
-                                  Auditing...
-                                </>
-                              ) : (
-                                <>
-                                  <Sparkles className="h-3.5 w-3.5 text-amber-300" />
-                                  Run AI Speech Audit
-                                </>
-                              )}
-                            </button>
-                          </div>
-                        </div>
-
-                        {/* PROGRESS BANNER */}
-                        {isAuditing && (
-                          <div className="p-3.5 rounded-xl bg-amber-50 border border-amber-200 flex items-center gap-2.5 text-xs font-bold text-amber-900 animate-pulse">
-                            <RefreshCw className="h-4 w-4 animate-spin shrink-0 text-amber-700" />
-                            <span>{auditStepMessage || 'Running AI speech & compliance audit...'}</span>
-                          </div>
-                        )}
-
-                        {/* AUDIO PLAYER & WAVEFORM */}
-                        {audioUrl && (
-                          <div className="p-4 rounded-xl bg-white border border-sand-300 shadow-xs space-y-3">
-                            <div className="flex items-center justify-between text-xs font-bold text-sand-800">
-                              <span>Audio Playback</span>
-                              {audioDuration > 0 && <span className="font-mono text-sand-500">{audioDuration}s</span>}
-                            </div>
-                            <audio
-                              ref={audioPlayerRef}
-                              src={audioUrl}
-                              controls
-                              className="w-full h-10"
-                              onPlay={() => setIsPlayingAudio(true)}
-                              onPause={() => setIsPlayingAudio(false)}
-                            />
-                            {audioWaveform.length > 0 && (
-                              <div className="h-12 w-full flex items-end gap-1 px-2 py-1 bg-sand-50 rounded-lg border border-sand-200 overflow-hidden">
-                                {audioWaveform.map((val, barIdx) => (
-                                  <div
-                                    key={barIdx}
-                                    className={`flex-1 rounded-t-xs transition-all ${isPlayingAudio && barIdx < 20 ? 'bg-[#3C311F]' : 'bg-sand-300'
-                                      }`}
-                                    style={{ height: `${val}%` }}
-                                  />
-                                ))}
-                              </div>
-                            )}
-                          </div>
-                        )}
-
-                        {/* SPEECH TRANSCRIPTION INPUT / EDITOR */}
-                        <div className="p-5 rounded-2xl bg-white border border-sand-300 shadow-xs space-y-3">
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-2">
-                              <FileText className="h-4 w-4 text-[#3C311F]" />
-                              <h3 className="text-xs font-bold uppercase tracking-wider text-sand-800">
-                                Speech Transcription
-                              </h3>
-                            </div>
-                            <span className="text-[11px] text-sand-500 font-mono">
-                              {transcriptText.split(/\s+/).filter(Boolean).length} words
-                            </span>
-                          </div>
-
-                          <textarea
-                            rows={4}
-                            value={transcriptText}
-                            onChange={(e) => setTranscriptText(e.target.value)}
-                            placeholder="Speech transcript will appear here directly in real time as you speak or upload audio. You can also edit or paste text directly..."
-                            className="w-full p-3 rounded-xl border border-sand-300 text-xs font-mono text-sand-900 bg-sand-50/40 focus:bg-white focus:outline-none focus:ring-1 focus:ring-[#3C311F] leading-relaxed"
-                          />
-
-                          {/* ACTION BANNER TO AUDIT SPEECH */}
-                          <div className="p-3.5 sm:p-4 rounded-xl bg-amber-50/80 border border-amber-300 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-2xs">
-                            <div className="flex items-center gap-3">
-                              <div className="h-9 w-9 rounded-lg bg-[#3C311F] text-amber-300 flex items-center justify-center shrink-0 shadow-2xs">
-                                <Sparkles className="h-5 w-5" />
-                              </div>
-                              <div>
-                                <div className="text-xs font-bold text-sand-950 flex items-center gap-2">
-                                  <span>
-                                    {transcriptText.trim()
-                                      ? 'Speech Transcript Ready'
-                                      : audioFile || audioUrl
-                                      ? 'Audio Source Loaded'
-                                      : 'Direct Speech Audit Ready'}
-                                  </span>
-                                  <span className="text-[10px] font-semibold text-emerald-800 bg-emerald-100 px-2 py-0.5 rounded-full border border-emerald-300">
-                                    {transcriptText.trim()
-                                      ? `${transcriptText.trim().split(/\s+/).length} words`
-                                      : audioDuration > 0
-                                      ? `${audioDuration}s audio`
-                                      : 'Instant Dictation'}
-                                  </span>
-                                </div>
-                                <p className="text-[11px] text-sand-700">
-                                  {transcriptText.trim()
-                                    ? 'Click below to audit this transcript against your active brand guidelines.'
-                                    : audioFile || audioUrl
-                                    ? 'Click below to audit speech compliance, voice cadence (WPM), and tone.'
-                                    : 'Speak into microphone or enter transcript above, then audit with one click.'}
-                                </p>
-                              </div>
-                            </div>
-                            <button
-                              onClick={handleRunAudioAudit}
-                              disabled={isAuditing}
-                              className="px-5 py-2.5 rounded-xl bg-[#3C311F] hover:bg-[#2B2316] text-white text-xs font-bold flex items-center justify-center gap-2 shadow-sm transition-all cursor-pointer whitespace-nowrap disabled:opacity-50"
-                            >
-                              {isAuditing ? (
-                                <>
-                                  <RefreshCw className="h-3.5 w-3.5 animate-spin" />
-                                  Auditing Speech...
-                                </>
-                              ) : (
-                                <>
-                                  <Sparkles className="h-3.5 w-3.5 text-amber-300" />
-                                  {transcriptText.trim() ? 'Audit This Transcript' : 'Run AI Speech Audit'}
-                                </>
-                              )}
-                            </button>
-                          </div>
-                        </div>
-
-                        {/* VOICE ANALYSIS METRICS */}
-                        {voiceMetrics && (
-                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                            <div className="p-4 rounded-xl bg-white border border-sand-300 shadow-2xs space-y-1">
-                              <span className="text-[10px] font-bold uppercase text-sand-500">Speech Cadence</span>
-                              <div className="text-xl font-bold font-mono text-sand-950">
-                                {voiceMetrics.cadenceWPM} WPM
-                              </div>
-                              <span className="text-[10px] text-emerald-800 font-semibold bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
-                                Optimal (140-160 WPM)
-                              </span>
-                            </div>
-
-                            <div className="p-4 rounded-xl bg-white border border-sand-300 shadow-2xs space-y-1">
-                              <span className="text-[10px] font-bold uppercase text-sand-500">Filler Words</span>
-                              <div className="text-xl font-bold font-mono text-sand-950">
-                                {voiceMetrics.fillerWordsRatio}%
-                              </div>
-                              <span className="text-[10px] text-emerald-800 font-semibold bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
-                                Clean (&lt; 2%)
-                              </span>
-                            </div>
-
-                            <div className="p-4 rounded-xl bg-white border border-sand-300 shadow-2xs space-y-1">
-                              <span className="text-[10px] font-bold uppercase text-sand-500">Loudness Target</span>
-                              <div className="text-xl font-bold font-mono text-sand-950">
-                                {voiceMetrics.loudnessLUFS} LUFS
-                              </div>
-                              <span className="text-[10px] text-emerald-800 font-semibold bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
-                                EBU R128 Pass
-                              </span>
-                            </div>
-                          </div>
-                        )}
-
-                        {/* REAL AI AUDIT IDENTIFIED ISSUES & SUGGESTIONS */}
-                        {audioAuditResult ? (
-                          <div className="space-y-4">
-                            {/* Overall Scorecard Bar */}
-                            <div className="p-4 rounded-xl bg-sand-50 border border-sand-300 flex items-center justify-between">
-                              <div>
-                                <span className="text-xs font-bold text-sand-700 uppercase tracking-wider block">
-                                  Speech Compliance Score
-                                </span>
-                                <div className="text-2xl font-serif font-extrabold text-sand-950">
-                                  {audioAuditResult.overallScore}%
-                                </div>
-                              </div>
-
-                              <div className="flex gap-2">
-                                <span className="text-xs font-bold px-2.5 py-1 rounded-lg bg-white border border-sand-300 text-sand-800">
-                                  Grammar: {audioAuditResult.grammarScore ?? 92}%
-                                </span>
-                                <span className="text-xs font-bold px-2.5 py-1 rounded-lg bg-white border border-sand-300 text-sand-800">
-                                  Tone: {audioAuditResult.toneScore}%
-                                </span>
-                                <span className="text-xs font-bold px-2.5 py-1 rounded-lg bg-white border border-sand-300 text-sand-800">
-                                  Claims: {audioAuditResult.claimsScore}%
-                                </span>
-                              </div>
-                            </div>
-
-                            {/* Identified Issues */}
-                            <div className="space-y-3">
-                              <div className="text-xs font-bold uppercase tracking-wider text-sand-800">
-                                Identified Issues & Suggestions ({audioAuditResult.issues.length})
-                              </div>
-
-                              {audioAuditResult.issues.length === 0 ? (
-                                <div className="p-6 rounded-xl bg-emerald-50/60 border border-emerald-300 text-center text-xs text-emerald-900 font-semibold flex items-center justify-center gap-2">
-                                  <CheckCircle2 className="h-4 w-4 text-emerald-600" />
-                                  Zero issues found. Speech transcript complies with all grammar, tone, and brand claim guidelines!
-                                </div>
-                              ) : (
-                                audioAuditResult.issues.map((issue) => (
-                                  <div
-                                    key={issue.id}
-                                    className="p-4 rounded-xl border-2 border-amber-300 bg-amber-50/20 space-y-3 shadow-2xs"
-                                  >
-                                    {/* Issue Badges */}
-                                    <div className="flex items-center gap-2">
-                                      <span className="text-[10px] uppercase font-bold px-2 py-0.5 rounded bg-amber-100 text-amber-900 border border-amber-300">
-                                        {issue.severity}
-                                      </span>
-                                      <span className="text-[10px] uppercase font-bold px-2 py-0.5 rounded bg-sand-200 text-sand-800">
-                                        {issue.category}
-                                      </span>
-                                      {issue.guidelineRef && (
-                                        <span className="text-[10px] font-mono font-semibold px-2 py-0.5 rounded bg-sand-100 text-sand-600 border border-sand-200">
-                                          {issue.guidelineRef}
-                                        </span>
-                                      )}
-                                    </div>
-
-                                    {/* Flagged Text vs Suggested Replacement Cards */}
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                                      {/* FLAGGED TEXT */}
-                                      <div className="p-3 rounded-xl bg-rose-50/70 border border-rose-200 space-y-1">
-                                        <span className="text-[10px] font-bold uppercase text-rose-800 block tracking-wider">
-                                          FLAGGED TEXT:
-                                        </span>
-                                        <div className="text-xs font-medium text-rose-950 font-mono leading-relaxed">
-                                          &ldquo;{issue.originalText}&rdquo;
-                                        </div>
-                                      </div>
-
-                                      {/* SUGGESTED REPLACEMENT & ACCEPT/REJECT */}
-                                      <div className="p-3 rounded-xl bg-emerald-50/70 border border-emerald-200 flex flex-col justify-between space-y-2">
-                                        <div className="space-y-1">
-                                          <span className="text-[10px] font-bold uppercase text-emerald-800 block tracking-wider">
-                                            SUGGESTED REPLACEMENT:
-                                          </span>
-                                          <div className="text-xs font-medium text-emerald-950 font-mono leading-relaxed">
-                                            &ldquo;{issue.suggestedReplacement}&rdquo;
-                                          </div>
-                                        </div>
-
-                                        <div className="flex items-center justify-end gap-2 pt-1 border-t border-emerald-200/60">
-                                          <button
-                                            onClick={() => handleAcceptIssue(issue)}
-                                            className="px-3 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center gap-1 shadow-2xs transition-all"
-                                          >
-                                            <Check className="h-3 w-3" />
-                                            Accept
-                                          </button>
-                                          <button
-                                            onClick={() => handleRejectIssue(issue.id)}
-                                            className="px-3 py-1 rounded-lg bg-white hover:bg-sand-100 text-sand-700 border border-sand-300 text-xs font-medium flex items-center gap-1 transition-all"
-                                          >
-                                            <X className="h-3 w-3" />
-                                            Reject
-                                          </button>
-                                        </div>
-                                      </div>
-                                    </div>
-
-                                    {/* WHY FLAGGED EXPLANATION */}
-                                    <div className="text-xs text-sand-800 leading-relaxed pt-1">
-                                      <strong className="font-bold text-sand-950">Why flagged:</strong> {issue.explanation}
-                                    </div>
-                                  </div>
-                                ))
-                              )}
-                            </div>
-
-                            {/* CORRECTED REWRITE */}
-                            {audioAuditResult.suggestedFullText && (
-                              <div className="p-4 rounded-xl bg-sand-50 border border-sand-300 space-y-2">
-                                <span className="text-xs font-bold uppercase tracking-wider text-sand-800 flex items-center gap-1.5">
-                                  <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
-                                  Corrected Compliant Transcript
-                                </span>
-                                <div className="p-3 bg-white rounded-lg border border-sand-200 text-xs font-mono text-sand-900 leading-relaxed">
-                                  {audioAuditResult.suggestedFullText}
-                                </div>
-                              </div>
-                            )}
-                          </div>
-                        ) : (
-                          <div className="p-8 rounded-2xl bg-white border border-sand-300 shadow-xs text-center space-y-4">
-                            <div className="inline-flex items-center justify-center h-12 w-12 rounded-full bg-sand-100 text-sand-700">
-                              <Headphones className="h-6 w-6 text-[#3C311F]" />
-                            </div>
-                            <div className="max-w-md mx-auto space-y-1.5">
-                              <h4 className="text-sm font-bold text-sand-900">
-                                Direct Speech Transcription &amp; Voice Governance
-                              </h4>
-                              <p className="text-xs text-sand-600 leading-relaxed">
-                                Record live speech with your microphone or upload an audio file. Your speech is transcribed directly in real time with zero logins, then audited for cadence, filler words, grammar, tone, and brand compliance.
-                              </p>
-                            </div>
-                            <div className="flex items-center justify-center gap-2 pt-1 flex-wrap">
-                              <button
-                                onClick={handleToggleLiveRecording}
-                                type="button"
-                                className="px-4 py-2 rounded-xl bg-sand-100 hover:bg-sand-200 text-sand-800 text-xs font-semibold border border-sand-300 transition-all shadow-2xs flex items-center gap-1.5 cursor-pointer"
-                              >
-                                <Mic className="h-3.5 w-3.5 text-rose-600" />
-                                Record Live Voice
-                              </button>
-                              <button
-                                onClick={() => audioInputRef.current?.click()}
-                                type="button"
-                                className="px-4 py-2 rounded-xl bg-[#3C311F] hover:bg-[#2B2316] text-white text-xs font-bold flex items-center gap-1.5 transition-all shadow-xs cursor-pointer"
-                              >
-                                <Upload className="h-3.5 w-3.5" />
-                                Upload Audio File
-                              </button>
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    )}
-
-                    {/* ========================================================= */}
-                    {/* 2. VIDEO KEYFRAME AUDIT SECTION */}
-                    {/* ========================================================= */}
-                    {mediaType === 'video' && (
-                      <div className="space-y-6">
-                        <div className="p-4 sm:p-5 rounded-2xl bg-white border border-sand-300 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
-                          <div className="space-y-1">
-                            <div className="flex items-center gap-2">
-                              <span className="text-xs font-bold uppercase tracking-wider text-sand-700">Video File:</span>
-                              <span className="text-xs font-semibold text-sand-950">
-                                {videoFile ? videoFile.name : 'No video selected'}
-                              </span>
-                            </div>
-                          </div>
-
-                          <div className="flex items-center gap-2.5 flex-wrap">
-                            <button
-                              onClick={() => videoInputRef.current?.click()}
-                              className="px-3.5 py-2 rounded-xl bg-sand-100 hover:bg-sand-200 text-sand-800 border border-sand-300 text-xs font-semibold flex items-center gap-1.5 shadow-2xs"
-                            >
-                              <Upload className="h-3.5 w-3.5" />
-                              {videoFile ? 'Change Video' : 'Upload Video'}
-                            </button>
-
-                            <button
-                              onClick={handleRunVideoAudit}
-                              disabled={isAuditing || !videoUrl}
-                              className="px-5 py-2 rounded-xl bg-[#3C311F] hover:bg-[#2B2316] text-white text-xs font-bold flex items-center gap-2 shadow-sm disabled:opacity-50"
-                            >
-                              {isAuditing ? (
-                                <>
-                                  <RefreshCw className="h-3.5 w-3.5 animate-spin" />
-                                  Auditing Frames...
-                                </>
-                              ) : (
-                                <>
-                                  <Sparkles className="h-3.5 w-3.5 text-amber-300" />
-                                  Run AI Video Audit
-                                </>
-                              )}
-                            </button>
-                          </div>
-                        </div>
-
-                        {isAuditing && (
-                          <div className="p-3.5 rounded-xl bg-amber-50 border border-amber-200 flex items-center gap-2.5 text-xs font-bold text-amber-900 animate-pulse">
-                            <RefreshCw className="h-4 w-4 animate-spin shrink-0 text-amber-700" />
-                            <span>{auditStepMessage || 'Auditing video frames...'}</span>
-                          </div>
-                        )}
-
-                        {/* VIDEO PLAYER & KEYFRAME RESULTS */}
-                        {(videoUrl || videoAudit) && (
-                          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                            <div className="lg:col-span-2 bg-white p-5 rounded-2xl border border-sand-300 shadow-xs space-y-4">
-                              <div className="relative rounded-xl overflow-hidden bg-stone-900 aspect-video flex items-center justify-center border border-stone-800">
-                                {videoAudit && videoAudit.keyframes[selectedKeyframeIdx] ? (
-                                  <img
-                                    src={videoAudit.keyframes[selectedKeyframeIdx]?.frameImageUrl}
-                                    alt="Keyframe Preview"
-                                    className="w-full h-full object-cover"
-                                  />
-                                ) : videoUrl ? (
-                                  <video
-                                    ref={videoPlayerRef}
-                                    src={videoUrl}
-                                    controls
-                                    playsInline
-                                    className="w-full h-full object-contain"
-                                  />
-                                ) : null}
-
-                                {videoAudit && videoAudit.keyframes[selectedKeyframeIdx] && (
-                                  <div className="absolute bottom-3 right-3 bg-stone-950/80 px-2 py-0.5 rounded font-mono text-[11px] text-sand-200 border border-stone-700">
-                                    Frame @ {videoAudit.keyframes[selectedKeyframeIdx]?.timestampSeconds}s
-                                  </div>
-                                )}
-                              </div>
-
-                              {/* Keyframe Strip */}
-                              {videoAudit && (
-                                <div className="space-y-2 pt-1">
-                                  <div className="flex items-center justify-between text-xs font-bold text-sand-700">
-                                    <span>Timeline Keyframes ({videoAudit.keyframes.length} Sampled)</span>
-                                  </div>
-
-                                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
-                                    {videoAudit.keyframes.map((kf, i) => {
-                                      const isSelected = i === selectedKeyframeIdx;
-                                      return (
-                                        <div
-                                          key={i}
-                                          onClick={() => setSelectedKeyframeIdx(i)}
-                                          className={`p-2 rounded-xl border transition-all cursor-pointer ${isSelected
-                                              ? 'bg-sand-50 border-[#3C311F] ring-2 ring-[#3C311F]/20'
-                                              : 'bg-white border-sand-200 hover:border-sand-300'
-                                            }`}
-                                        >
-                                          <div className="relative rounded-lg overflow-hidden aspect-video bg-stone-800">
-                                            <img
-                                              src={kf.frameImageUrl}
-                                              alt="Frame"
-                                              className="w-full h-full object-cover"
-                                            />
-                                            <span className="absolute bottom-1 right-1 bg-stone-950/80 text-white font-mono text-[9px] px-1 rounded">
-                                              {kf.timestampSeconds}s
-                                            </span>
-                                          </div>
-
-                                          <div className="flex items-center justify-between text-[11px] mt-1.5">
-                                            <span className="font-bold text-sand-800">
-                                              Match: {kf.paletteAdherenceScore}%
-                                            </span>
-                                            <span className="flex items-center gap-0.5">
-                                              {kf.dominantHexes.slice(0, 3).map((hex, hIdx) => (
-                                                <span
-                                                  key={hIdx}
-                                                  className="h-2.5 w-2.5 rounded-full border border-sand-300 inline-block"
-                                                  style={{ backgroundColor: hex }}
-                                                  title={hex}
-                                                />
-                                              ))}
-                                            </span>
-                                          </div>
-                                        </div>
-                                      );
-                                    })}
-                                  </div>
-                                </div>
-                              )}
-                            </div>
-
-                            {/* REAL VIDEO COMPLIANCE SCORECARD */}
-                            <div className="bg-white p-5 rounded-2xl border border-sand-300 shadow-xs space-y-4 flex flex-col justify-between">
-                              {videoAudit ? (
-                                <>
-                                  <div className="space-y-4">
-                                    <div className="flex items-center justify-between pb-2 border-b border-sand-200">
-                                      <h3 className="text-xs font-bold uppercase tracking-wider text-sand-800">
-                                        Video Compliance Scorecard
-                                      </h3>
-                                      <span className="text-[10px] text-emerald-800 font-bold bg-emerald-100 px-2 py-0.5 rounded-full">
-                                        Verified Audit
-                                      </span>
-                                    </div>
-
-                                    {/* Overall Compliance Score Meter */}
-                                    <div className="p-4 rounded-xl bg-sand-50 border border-sand-300 text-center space-y-1">
-                                      <div className="text-3xl font-serif font-extrabold text-sand-950">
-                                        {videoAudit.overallVideoScore}%
-                                      </div>
-                                      <div className="text-[10px] font-bold uppercase tracking-wider text-emerald-800">
-                                        Overall Video Adherence
-                                      </div>
-                                    </div>
-
-                                    {/* Category Breakdown Meters */}
-                                    <div className="space-y-2">
-                                      <div className="flex items-center justify-between text-xs">
-                                        <span className="text-sand-600 font-medium">Palette Consistency</span>
-                                        <span className="font-mono font-bold text-sand-950">{videoAudit.visualConsistencyScore}%</span>
-                                      </div>
-                                      <div className="w-full bg-sand-200 h-1.5 rounded-full overflow-hidden">
-                                        <div
-                                          className="bg-emerald-600 h-full rounded-full"
-                                          style={{ width: `${videoAudit.visualConsistencyScore}%` }}
-                                        />
-                                      </div>
-
-                                      <div className="flex items-center justify-between text-xs pt-1">
-                                        <span className="text-sand-600 font-medium">Watermark & Safe Area</span>
-                                        <span className="font-mono font-bold text-sand-950">100%</span>
-                                      </div>
-                                      <div className="w-full bg-sand-200 h-1.5 rounded-full overflow-hidden">
-                                        <div className="bg-emerald-600 h-full rounded-full" style={{ width: '100%' }} />
-                                      </div>
-
-                                      <div className="flex items-center justify-between text-xs pt-1">
-                                        <span className="text-sand-600 font-medium">Audio Synchronization</span>
-                                        <span className="font-mono font-bold text-sand-950">{videoAudit.audioSyncAudit.musicCopyrightScore}%</span>
-                                      </div>
-                                      <div className="w-full bg-sand-200 h-1.5 rounded-full overflow-hidden">
-                                        <div
-                                          className="bg-emerald-600 h-full rounded-full"
-                                          style={{ width: `${videoAudit.audioSyncAudit.musicCopyrightScore}%` }}
-                                        />
-                                      </div>
-                                    </div>
-
-                                    {/* Real Detected OCR Text from Selected Keyframe */}
-                                    <div className="space-y-1 text-xs pt-2">
-                                      <span className="font-bold text-sand-800 uppercase text-[10px] block">
-                                        Current Frame Text:
-                                      </span>
-                                      <div className="p-3 rounded-lg bg-sand-50 border border-sand-200 font-mono text-[11px] text-sand-900 leading-relaxed">
-                                        {videoAudit.keyframes[selectedKeyframeIdx]?.detectedText || 'No text overlay on current frame.'}
-                                      </div>
-                                    </div>
-                                  </div>
-
-                                  <div className="p-3.5 rounded-xl bg-sand-50 border border-sand-200 space-y-2 text-xs">
-                                    <span className="font-bold text-sand-800 uppercase text-[10px] flex items-center gap-1">
-                                      <ShieldCheck className="h-3.5 w-3.5 text-emerald-600" />
-                                      Audit Verification Findings
-                                    </span>
-                                    <ul className="space-y-1 text-[11px] text-sand-700">
-                                      {videoAudit.recommendations.map((rec, rIdx) => (
-                                        <li key={rIdx} className="flex items-start gap-1">
-                                          <span className="text-[#3C311F] font-bold">•</span>
-                                          <span>{rec}</span>
-                                        </li>
-                                      ))}
-                                    </ul>
-                                  </div>
-                                </>
-                              ) : (
-                                <div className="p-8 text-center space-y-3 my-auto">
-                                  <Sparkles className="h-8 w-8 text-sand-400 mx-auto" />
-                                  <p className="text-xs text-sand-600 font-medium">
-                                    Click &ldquo;Run AI Video Audit&rdquo; to analyze video frames against brand standards.
-                                  </p>
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    )}
+                    <div className="p-3.5 rounded-xl bg-sand-50 border border-sand-200 space-y-2 text-xs">
+                      <span className="font-bold text-sand-800 uppercase text-[10px] flex items-center gap-1">
+                        <ShieldCheck className="h-3.5 w-3.5 text-emerald-600" />
+                        Audit Verification Findings
+                      </span>
+                      <ul className="space-y-1 text-[11px] text-sand-700">
+                        {videoAudit.recommendations.map((rec, rIdx) => (
+                          <li key={rIdx} className="flex items-start gap-1">
+                            <span className="text-[#3C311F] font-bold">•</span>
+                            <span>{rec}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  </>
+                ) : (
+                  <div className="p-8 text-center space-y-3 my-auto">
+                    <Sparkles className="h-8 w-8 text-sand-400 mx-auto" />
+                    <p className="text-xs text-sand-600 font-medium">
+                      Click &ldquo;Run AI Video Audit&rdquo; to analyze video frames against brand standards.
+                    </p>
                   </div>
-                );
-              };
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};

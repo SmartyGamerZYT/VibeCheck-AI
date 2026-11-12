@@ -22,6 +22,7 @@ interface AuthScreenProps {
   accounts: UserAccount[];
   onLogin: (account: UserAccount) => void;
   onRegister: (account: UserAccount, newOrg?: Organization) => void;
+  onResetPassword?: (email: string, newPass: string) => boolean;
   onBackToLanding?: () => void;
   onOpenLegal?: (tab: 'about' | 'contact' | 'privacy' | 'terms' | 'copyright') => void;
 }
@@ -52,12 +53,20 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
   accounts,
   onLogin,
   onRegister,
+  onResetPassword,
   onBackToLanding,
   onOpenLegal,
 }) => {
   const [isRegistering, setIsRegistering] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [showLocalhostNotice, setShowLocalhostNotice] = useState(false);
+
+  // Forgot Password State
+  const [isForgotPassword, setIsForgotPassword] = useState(false);
+  const [resetEmail, setResetEmail] = useState('');
+  const [resetNewPassword, setResetNewPassword] = useState('');
+  const [resetConfirmPassword, setResetConfirmPassword] = useState('');
+  const [resetSuccess, setResetSuccess] = useState(false);
 
   // Login Form
   const [loginEmail, setLoginEmail] = useState('');
@@ -275,6 +284,56 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
     onLogin(user);
   };
 
+  const handleResetPasswordSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    setErrorMsg(null);
+
+    if (!resetEmail.trim()) {
+      setErrorMsg('Please enter your registered email address.');
+      return;
+    }
+
+    const targetAccount = accounts.find(
+      (a) => a.email.toLowerCase() === resetEmail.trim().toLowerCase()
+    );
+
+    if (!targetAccount) {
+      setErrorMsg('No account found with this email. Please check your spelling.');
+      return;
+    }
+
+    if (!resetNewPassword || resetNewPassword.length < 6) {
+      setErrorMsg('New password must be at least 6 characters long.');
+      return;
+    }
+
+    if (resetNewPassword !== resetConfirmPassword) {
+      setErrorMsg('Passwords do not match. Please re-enter both passwords.');
+      return;
+    }
+
+    if (onResetPassword) {
+      onResetPassword(resetEmail.trim(), resetNewPassword);
+    } else {
+      try {
+        targetAccount.password = resetNewPassword;
+        const stored = localStorage.getItem('vibecheck_accounts');
+        if (stored) {
+          const parsed = JSON.parse(stored);
+          const idx = parsed.findIndex(
+            (a: any) => a.email.toLowerCase() === resetEmail.trim().toLowerCase()
+          );
+          if (idx !== -1) {
+            parsed[idx].password = resetNewPassword;
+            localStorage.setItem('vibecheck_accounts', JSON.stringify(parsed));
+          }
+        }
+      } catch {}
+    }
+
+    setResetSuccess(true);
+  };
+
   const handleQuickDemoLogin = (email: string) => {
     const user = accounts.find((a) => a.email.toLowerCase() === email.toLowerCase());
     if (user) {
@@ -413,7 +472,126 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
           </button>
         )}
 
-        {/* Toggle Login / Register */}
+        {isForgotPassword ? (
+          <div className="space-y-4">
+            <div className="text-center space-y-1 mb-2">
+              <div className="h-10 w-10 rounded-full bg-sand-100 text-sand-800 flex items-center justify-center mx-auto mb-2 border border-sand-300 shadow-2xs">
+                <KeyRound className="h-5 w-5" />
+              </div>
+              <h4 className="font-serif font-bold text-sand-950 text-base">Reset Your Password</h4>
+              <p className="text-xs text-sand-600 leading-relaxed max-w-xs mx-auto">
+                Enter your registered email and choose a new password to reset your credentials.
+              </p>
+            </div>
+
+            {errorMsg && (
+              <div className="p-3 rounded-lg bg-rose-50 border border-rose-200 text-rose-800 text-xs">
+                {errorMsg}
+              </div>
+            )}
+
+            {resetSuccess ? (
+              <div className="p-4 rounded-xl bg-emerald-50 border border-emerald-200 text-center space-y-3">
+                <div className="h-9 w-9 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center mx-auto">
+                  <Check className="h-5 w-5" />
+                </div>
+                <div>
+                  <div className="text-xs font-bold text-emerald-900">Password Reset Successfully</div>
+                  <p className="text-[11px] text-emerald-700 mt-0.5">
+                    Your password has been updated. You can now sign in with your new password.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsForgotPassword(false);
+                    setResetSuccess(false);
+                    setLoginEmail(resetEmail);
+                    setLoginPassword('');
+                    setErrorMsg(null);
+                  }}
+                  className="w-full py-2.5 px-3 rounded-xl bg-sand-900 hover:bg-sand-800 text-white font-bold text-xs shadow-xs transition-all cursor-pointer"
+                >
+                  Sign In with New Password
+                </button>
+              </div>
+            ) : (
+              <form onSubmit={handleResetPasswordSubmit} className="space-y-3.5">
+                <div>
+                  <label className="text-xs font-semibold text-sand-700 block mb-1">
+                    Registered Email Address
+                  </label>
+                  <div className="relative">
+                    <Mail className="h-4 w-4 text-sand-400 absolute left-3 top-3" />
+                    <input
+                      type="email"
+                      required
+                      value={resetEmail}
+                      onChange={(e) => setResetEmail(e.target.value)}
+                      placeholder="name@company.com"
+                      className="w-full pl-9 pr-3 py-2 text-xs text-sand-900 bg-sand-50/60 border border-sand-300 rounded-lg focus:outline-hidden focus:ring-2 focus:ring-sand-500"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="text-xs font-semibold text-sand-700 block mb-1">
+                    New Password
+                  </label>
+                  <div className="relative">
+                    <Lock className="h-4 w-4 text-sand-400 absolute left-3 top-3" />
+                    <input
+                      type="password"
+                      required
+                      value={resetNewPassword}
+                      onChange={(e) => setResetNewPassword(e.target.value)}
+                      placeholder="Minimum 6 characters"
+                      className="w-full pl-9 pr-3 py-2 text-xs text-sand-900 bg-sand-50/60 border border-sand-300 rounded-lg focus:outline-hidden focus:ring-2 focus:ring-sand-500"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="text-xs font-semibold text-sand-700 block mb-1">
+                    Confirm New Password
+                  </label>
+                  <div className="relative">
+                    <Lock className="h-4 w-4 text-sand-400 absolute left-3 top-3" />
+                    <input
+                      type="password"
+                      required
+                      value={resetConfirmPassword}
+                      onChange={(e) => setResetConfirmPassword(e.target.value)}
+                      placeholder="Re-enter new password"
+                      className="w-full pl-9 pr-3 py-2 text-xs text-sand-900 bg-sand-50/60 border border-sand-300 rounded-lg focus:outline-hidden focus:ring-2 focus:ring-sand-500"
+                    />
+                  </div>
+                </div>
+
+                <button
+                  type="submit"
+                  className="w-full py-2.5 rounded-xl bg-sand-900 text-sand-50 text-xs font-semibold hover:bg-sand-800 transition-all shadow-xs flex items-center justify-center gap-1.5 cursor-pointer"
+                >
+                  Reset Password
+                  <ArrowRight className="h-3.5 w-3.5" />
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsForgotPassword(false);
+                    setErrorMsg(null);
+                  }}
+                  className="w-full py-1 text-center text-xs text-sand-500 hover:text-sand-900 font-semibold cursor-pointer transition-colors"
+                >
+                  ← Cancel and Return to Sign In
+                </button>
+              </form>
+            )}
+          </div>
+        ) : (
+          <>
+            {/* Toggle Login / Register */}
         <div className="flex border-b border-sand-200 mb-6 pb-2">
           <button
             onClick={() => {
@@ -520,9 +698,23 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
             </div>
 
             <div>
-              <label className="text-xs font-semibold text-sand-700 block mb-1">
-                Password
-              </label>
+              <div className="flex items-center justify-between mb-1">
+                <label className="text-xs font-semibold text-sand-700">
+                  Password
+                </label>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsForgotPassword(true);
+                    setErrorMsg(null);
+                    setResetSuccess(false);
+                    setResetEmail(loginEmail);
+                  }}
+                  className="text-[11px] font-semibold text-sand-600 hover:text-sand-950 underline underline-offset-2 cursor-pointer transition-colors"
+                >
+                  Forgot password?
+                </button>
+              </div>
               <div className="relative">
                 <Lock className="h-4 w-4 text-sand-400 absolute left-3 top-3" />
                 <input
@@ -764,6 +956,8 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
               )}
             </button>
           </form>
+        )}
+          </>
         )}
       </div>
 

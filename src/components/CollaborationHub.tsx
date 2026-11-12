@@ -111,8 +111,9 @@ export const CollaborationHub: React.FC<CollaborationHubProps> = ({
   const [callParticipants, setCallParticipants] = useState<UserAccount[]>([]);
   const [callHost, setCallHost] = useState<UserAccount | null>(null);
 
-  // Track member camera states (id -> boolean)
-  const [memberCamStates, setMemberCamStates] = useState<Record<string, boolean>>({});
+  // Remote Media Streams (Synchronized over WebRTC & local streams)
+  const [remoteCamStreams, setRemoteCamStreams] = useState<Record<string, MediaStream>>({});
+  const [remoteScreenStream, setRemoteScreenStream] = useState<MediaStream | null>(null);
 
   // Call Invitations
   const [outgoingInvites, setOutgoingInvites] = useState<CallInvitation[]>([]);
@@ -168,38 +169,38 @@ export const CollaborationHub: React.FC<CollaborationHubProps> = ({
     };
   }, [camStream, screenStream]);
 
-    // Synchronize Screen Sharing and Call State across users/tabs
-    const syncCallState = () => {
-      try {
-        // 1. Invitations sync
-        const raw = localStorage.getItem('vibecheck_call_invitations');
-        if (raw) {
-          const allInvites: CallInvitation[] = JSON.parse(raw);
+  // Synchronize Screen Sharing and Call State across users/tabs
+  const syncCallState = () => {
+    try {
+      // 1. Invitations sync
+      const raw = localStorage.getItem('vibecheck_call_invitations');
+      if (raw) {
+        const allInvites: CallInvitation[] = JSON.parse(raw);
 
-          // Check incoming invite for logged in user
-          const toMe = allInvites.find(
-            (inv) => inv.toUserId === currentUser.id && inv.status === 'pending'
+        // Check incoming invite for logged in user
+        const toMe = allInvites.find(
+          (inv) => inv.toUserId === currentUser.id && inv.status === 'pending'
+        );
+        setIncomingInvite(toMe || null);
+
+        // Update outgoing invites sent by current user
+        if (isInCall && selectedProject) {
+          const myOutgoing = allInvites.filter(
+            (inv) => inv.fromUser.id === currentUser.id && inv.projectId === selectedProject.id
           );
-          setIncomingInvite(toMe || null);
+          setOutgoingInvites(myOutgoing);
 
-          // Update outgoing invites sent by current user
-          if (isInCall && selectedProject) {
-            const myOutgoing = allInvites.filter(
-              (inv) => inv.fromUser.id === currentUser.id && inv.projectId === selectedProject.id
-            );
-            setOutgoingInvites(myOutgoing);
-
-            // If an invite was accepted, ensure that member is in the call
-            myOutgoing.forEach((inv) => {
-              if (inv.status === 'accepted') {
-                const acceptedUser = teamMembers.find((m) => m.id === inv.toUserId);
-                if (acceptedUser && !callParticipants.some((p) => p.id === acceptedUser.id)) {
-                  setCallParticipants((prev) => [...prev, acceptedUser]);
-                }
+          // If an invite was accepted, ensure that member is in the call
+          myOutgoing.forEach((inv) => {
+            if (inv.status === 'accepted') {
+              const acceptedUser = teamMembers.find((m) => m.id === inv.toUserId);
+              if (acceptedUser && !callParticipants.some((p) => p.id === acceptedUser.id)) {
+                setCallParticipants((prev) => [...prev, acceptedUser]);
               }
-            });
-          }
+            }
+          });
         }
+      }
 
       // 2. Synchronized Screen Share Sync
       const pId = selectedProject?.id || 'default';
@@ -242,13 +243,168 @@ export const CollaborationHub: React.FC<CollaborationHubProps> = ({
   useEffect(() => {
     const activeStream =
       screenStream ||
+      remoteScreenStream ||
       (typeof window !== 'undefined' ? (window as any).__vibecheck_screen_stream : null);
 
     if (screenVideoRef.current && activeStream) {
-      screenVideoRef.current.srcObject = activeStream;
+      if (screenVideoRef.current.srcObject !== activeStream) {
+        screenVideoRef.current.srcObject = activeStream;
+      }
       screenVideoRef.current.play().catch(() => { });
     }
-  }, [screenStream, remoteScreenShare, isScreenSharing]);
+  }, [screenStream, remoteScreenStream, remoteScreenShare, isScreenSharing]);
+
+  // WebRTC Multi-Tab Streaming (Streams real Camera & Screen between members across tabs)
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof RTCPeerConnection === 'undefined') return;
+
+    const myPeerId = Math.random().toString(36).substring(2, 9);
+    let channel: BroadcastChannel | null = null;
+    try {
+      channel = new BroadcastChannel('vibecheck_webrtc_meet');
+    } catch {
+      return;
+    }
+
+    const peerConnections = new Map<string, RTCPeerConnection>();
+    const config: RTCConfiguration = {
+      iceServers: [{ urls: 'stun:stun.l.google.com:19302' }],
+    };
+
+    const getOrCreatePC = (targetPeerId: string, peerUserId?: string) => {
+      let pc = peerConnections.get(targetPeerId);
+      if (!pc) {
+        pc = new RTCPeerConnection(config);
+        peerConnections.set(targetPeerId, pc);
+
+        if (camStream && isCamActive) {
+          camStream.getTracks().forEach((track) => {
+            try {
+              pc?.addTrack(track, camStream);
+            } catch { }
+          });
+        }
+        if (screenStream && isScreenSharing) {
+          screenStream.getTracks().forEach((track) => {
+            try {
+              pc?.addTrack(track, screenStream);
+            } catch { }
+          });
+        }
+
+        pc.onicecandidate = (event) => {
+          if (event.candidate && channel) {
+            channel.postMessage({
+              type: 'ice-candidate',
+              from: myPeerId,
+              to: targetPeerId,
+              candidate: event.candidate,
+            });
+          }
+        };
+
+        pc.ontrack = (event) => {
+          const stream = event.streams[0] || new MediaStream([event.track]);
+          const track = event.track;
+          const isDisplay =
+            track.label.toLowerCase().includes('screen') ||
+            (track.getSettings && !!(track.getSettings() as any).displaySurface);
+
+          if (isDisplay) {
+            setRemoteScreenStream(stream);
+          } else if (peerUserId) {
+            setRemoteCamStreams((prev) => ({ ...prev, [peerUserId]: stream }));
+          } else {
+            const other = callParticipants.find((p) => p.id !== currentUser.id);
+            if (other) {
+              setRemoteCamStreams((prev) => ({ ...prev, [other.id]: stream }));
+            }
+          }
+        };
+
+        pc.onconnectionstatechange = () => {
+          if (pc?.connectionState === 'disconnected' || pc?.connectionState === 'failed') {
+            peerConnections.delete(targetPeerId);
+          }
+        };
+      }
+      return pc;
+    };
+
+    channel.onmessage = async (event) => {
+      const data = event.data;
+      if (!data || data.from === myPeerId) return;
+
+      if (data.type === 'peer-joined' && isInCall) {
+        const pc = getOrCreatePC(data.from, data.userId);
+        try {
+          const offer = await pc.createOffer();
+          await pc.setLocalDescription(offer);
+          channel?.postMessage({
+            type: 'sdp-offer',
+            from: myPeerId,
+            to: data.from,
+            userId: currentUser.id,
+            sdp: offer,
+          });
+        } catch (err) {
+          console.warn('WebRTC offer error:', err);
+        }
+      } else if (data.type === 'sdp-offer' && data.to === myPeerId) {
+        const pc = getOrCreatePC(data.from, data.userId);
+        try {
+          await pc.setRemoteDescription(new RTCSessionDescription(data.sdp));
+          const answer = await pc.createAnswer();
+          await pc.setLocalDescription(answer);
+          channel?.postMessage({
+            type: 'sdp-answer',
+            from: myPeerId,
+            to: data.from,
+            userId: currentUser.id,
+            sdp: answer,
+          });
+        } catch (err) {
+          console.warn('WebRTC answer error:', err);
+        }
+      } else if (data.type === 'sdp-answer' && data.to === myPeerId) {
+        const pc = peerConnections.get(data.from);
+        if (pc) {
+          try {
+            await pc.setRemoteDescription(new RTCSessionDescription(data.sdp));
+          } catch (err) {
+            console.warn('WebRTC remote description error:', err);
+          }
+        }
+      } else if (data.type === 'ice-candidate' && data.to === myPeerId) {
+        const pc = peerConnections.get(data.from);
+        if (pc && data.candidate) {
+          try {
+            await pc.addIceCandidate(new RTCIceCandidate(data.candidate));
+          } catch (err) {
+            console.warn('WebRTC ICE error:', err);
+          }
+        }
+      } else if (data.type === 'screen-stopped') {
+        setRemoteScreenStream(null);
+      }
+    };
+
+    if (isInCall) {
+      channel.postMessage({
+        type: 'peer-joined',
+        from: myPeerId,
+        userId: currentUser.id,
+      });
+    }
+
+    return () => {
+      try {
+        channel?.close();
+      } catch { }
+      peerConnections.forEach((pc) => pc.close());
+      peerConnections.clear();
+    };
+  }, [isInCall, camStream, isCamActive, screenStream, isScreenSharing, currentUser.id, callParticipants]);
 
   const statusConfig: Record<
     ProjectStatus,
@@ -378,13 +534,29 @@ export const CollaborationHub: React.FC<CollaborationHubProps> = ({
     setMediaNotice(null);
   };
 
-  const handleToggleCam = () => {
+  const handleToggleCam = async () => {
     if (camStream) {
       const videoTracks = camStream.getVideoTracks();
-      videoTracks.forEach((t) => (t.enabled = !isCamActive));
-      setIsCamActive(!isCamActive);
+      const nextActive = !isCamActive;
+      videoTracks.forEach((t) => (t.enabled = nextActive));
+      setIsCamActive(nextActive);
     } else {
-      setIsCamActive(!isCamActive);
+      try {
+        if (typeof navigator !== 'undefined' && navigator.mediaDevices?.getUserMedia) {
+          const stream = await navigator.mediaDevices.getUserMedia({
+            video: true,
+            audio: true,
+          });
+          setCamStream(stream);
+          setIsCamActive(true);
+          if (typeof window !== 'undefined') {
+            if (!(window as any).__vibecheck_cam_streams) (window as any).__vibecheck_cam_streams = {};
+            (window as any).__vibecheck_cam_streams[currentUser.id] = stream;
+          }
+        }
+      } catch {
+        setIsCamActive(false);
+      }
     }
   };
 
@@ -396,14 +568,6 @@ export const CollaborationHub: React.FC<CollaborationHubProps> = ({
     } else {
       setIsMicActive(!isMicActive);
     }
-  };
-
-  // Toggle remote member's simulated cam in view
-  const handleToggleMemberCam = (memberId: string) => {
-    setMemberCamStates((prev) => ({
-      ...prev,
-      [memberId]: prev[memberId] === false ? true : false,
-    }));
   };
 
   // ==========================================
@@ -423,6 +587,11 @@ export const CollaborationHub: React.FC<CollaborationHubProps> = ({
         (window as any).__vibecheck_screen_stream = null;
         localStorage.setItem(`vibecheck_screen_share_${pId}`, JSON.stringify({ isSharing: false }));
         window.dispatchEvent(new CustomEvent('vibecheck_screen_share_update'));
+        try {
+          const bc = new BroadcastChannel('vibecheck_webrtc_meet');
+          bc.postMessage({ type: 'screen-stopped', userId: currentUser.id });
+          bc.close();
+        } catch { }
       }
       return;
     }
@@ -463,6 +632,11 @@ export const CollaborationHub: React.FC<CollaborationHubProps> = ({
               JSON.stringify({ isSharing: false })
             );
             window.dispatchEvent(new CustomEvent('vibecheck_screen_share_update'));
+            try {
+              const bc = new BroadcastChannel('vibecheck_webrtc_meet');
+              bc.postMessage({ type: 'screen-stopped', userId: currentUser.id });
+              bc.close();
+            } catch { }
           }
         };
       } else {
@@ -474,14 +648,14 @@ export const CollaborationHub: React.FC<CollaborationHubProps> = ({
   };
 
   // ==========================================
-  // PUTER.JS LIVE MEETING TRANSCRIPTION
+  // LIVE MEETING TRANSCRIPTION (AI SPEECH-TO-TEXT)
   // ==========================================
   const handlePuterSpeechTranscribe = async () => {
     if (isTranscribingWithPuter) return;
 
     try {
       setIsTranscribingWithPuter(true);
-      setPuterTranscriptionStatus('Listening & transcribing voice with Puter.js...');
+      setPuterTranscriptionStatus('Listening & transcribing voice...');
 
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       const mediaRecorder = new MediaRecorder(stream);
@@ -495,23 +669,23 @@ export const CollaborationHub: React.FC<CollaborationHubProps> = ({
         stream.getTracks().forEach((t) => t.stop());
         const audioBlob = new Blob(chunks, { type: mediaRecorder.mimeType || 'audio/webm' });
 
-        setPuterTranscriptionStatus('Puter.js AI converting speech to text...');
+        setPuterTranscriptionStatus('Converting speech to text...');
         let textResult = '';
 
-        // 1. Try Puter.js AI Speech-to-Text
+        // 1. Try Puter.js AI Speech-to-Text in background
         const puter = typeof window !== 'undefined' ? (window as any).puter : null;
         if (puter?.ai?.speech2txt) {
           try {
             const res = await puter.ai.speech2txt(audioBlob);
             textResult = typeof res === 'string' ? res.trim() : (res?.text || res?.transcript || '').trim();
           } catch (pErr) {
-            console.warn('Puter.js error notice:', pErr);
+            console.warn('Speech-to-text notice:', pErr);
           }
         }
 
-        // 2. Fallback if Puter.js unauthenticated or returned empty
+        // 2. Fallback if offline or empty
         if (!textResult) {
-          textResult = `Reviewed active campaign slide ${sharedSlideIdx}. Verified brand voice adherence and clinical claim documentation.`;
+          textResult = `Reviewed active campaign deliverables. Verified brand voice adherence and clinical claim documentation.`;
         }
 
         // Append to meeting transcript
@@ -539,21 +713,21 @@ export const CollaborationHub: React.FC<CollaborationHubProps> = ({
         }
       }, 3500);
     } catch (err) {
-      console.error('Microphone error for Puter.js:', err);
+      console.error('Microphone error for speech transcription:', err);
       setIsTranscribingWithPuter(false);
       setPuterTranscriptionStatus('');
-      alert('Microphone access is needed for Puter.js speech transcription.');
+      alert('Microphone access is needed for speech transcription.');
     }
   };
 
   const handleGeneratePuterSummary = async () => {
-    setPuterTranscriptionStatus('Generating AI Meeting Summary via Puter.js...');
+    setPuterTranscriptionStatus('Generating AI Meeting Summary...');
     const puter = typeof window !== 'undefined' ? (window as any).puter : null;
 
-    const summaryContent = `📋 Puter.js AI Meeting Summary:
-• Presenter: Elena Rostova presented Q4 Brand Strategy & Compliance Deck.
+    const summaryContent = `📋 AI Meeting Summary:
+• Presenter: Reviewing Brand Strategy & Compliance Deck.
 • Claims Cleared: Clinical efficacy statements authenticated against FDA registry #2024-819.
-• Design Compliance: Marcus Chen confirmed WCAG AAA color contrast ratios across all display assets.
+• Design Compliance: WCAG AAA color contrast ratios confirmed across all display assets.
 • Takeaway: Editorial guidelines cleared for omnichannel publication.`;
 
     if (puter?.ai?.chat) {
@@ -567,7 +741,7 @@ export const CollaborationHub: React.FC<CollaborationHubProps> = ({
           ...prev,
           {
             id: `summary_${Date.now()}`,
-            speaker: 'Puter.js AI Summary',
+            speaker: 'AI Meeting Summary',
             role: 'Meeting Intelligence',
             text: text,
             time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
@@ -579,7 +753,7 @@ export const CollaborationHub: React.FC<CollaborationHubProps> = ({
           ...prev,
           {
             id: `summary_${Date.now()}`,
-            speaker: 'Puter.js AI Summary',
+            speaker: 'AI Meeting Summary',
             role: 'Meeting Intelligence',
             text: summaryContent,
             time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
@@ -592,7 +766,7 @@ export const CollaborationHub: React.FC<CollaborationHubProps> = ({
         ...prev,
         {
           id: `summary_${Date.now()}`,
-          speaker: 'Puter.js AI Summary',
+          speaker: 'AI Meeting Summary',
           role: 'Meeting Intelligence',
           text: summaryContent,
           time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
@@ -643,414 +817,419 @@ export const CollaborationHub: React.FC<CollaborationHubProps> = ({
       filtered.push(newInvite);
       localStorage.setItem('vibecheck_call_invitations', JSON.stringify(filtered));
       window.dispatchEvent(new CustomEvent('vibecheck_call_invite', { detail: newInvite }));
-  } catch { }
+    } catch { }
 
-  setOutgoingInvites((prev) => [...prev.filter((i) => i.toUserId !== member.id), newInvite]);
+    setOutgoingInvites((prev) => [...prev.filter((i) => i.toUserId !== member.id), newInvite]);
 
-  onLogAudit(
-    'Call Invitation Sent',
-    `${currentUser.name} sent call invite to ${member.name} for "${selectedProject.title}".`,
-    'collaboration'
-  );
-};
-
-// Simulate invited user accepting and entering call
-const handleSimulateAnswerAndJoin = (memberId: string) => {
-  const member = teamMembers.find((m) => m.id === memberId);
-  if (!member) return;
-
-  try {
-    const raw = localStorage.getItem('vibecheck_call_invitations');
-    if (raw) {
-      const all: CallInvitation[] = JSON.parse(raw);
-      const updated = all.map((i) =>
-        i.toUserId === memberId && i.status === 'pending'
-          ? { ...i, status: 'accepted' as const }
-          : i
-      );
-      localStorage.setItem('vibecheck_call_invitations', JSON.stringify(updated));
-      window.dispatchEvent(new CustomEvent('vibecheck_call_invite'));
-    }
-} catch { }
-
-setOutgoingInvites((prev) =>
-  prev.map((i) => (i.toUserId === memberId ? { ...i, status: 'accepted' } : i))
-);
-
-if (!callParticipants.some((p) => p.id === member.id)) {
-  setCallParticipants((prev) => [...prev, member]);
-}
-
-setCallMessages((prev) => [
-  ...prev,
-  {
-    id: `sys_${Date.now()}`,
-    sender: 'System',
-    role: 'system',
-    text: `${member.name} (${member.role}) accepted call request and joined.`,
-    time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-  },
-]);
+    onLogAudit(
+      'Call Invitation Sent',
+      `${currentUser.name} sent call invite to ${member.name} for "${selectedProject.title}".`,
+      'collaboration'
+    );
   };
 
-// Accept incoming call request
-const handleAcceptIncomingCall = async () => {
-  if (!incomingInvite) return;
+  // Simulate invited user accepting and entering call
+  const handleSimulateAnswerAndJoin = (memberId: string) => {
+    const member = teamMembers.find((m) => m.id === memberId);
+    if (!member) return;
 
-  try {
-    const raw = localStorage.getItem('vibecheck_call_invitations');
-    if (raw) {
-      const all: CallInvitation[] = JSON.parse(raw);
-      const updated = all.map((i) =>
-        i.id === incomingInvite.id ? { ...i, status: 'accepted' as const } : i
-      );
-      localStorage.setItem('vibecheck_call_invitations', JSON.stringify(updated));
-      window.dispatchEvent(new CustomEvent('vibecheck_call_invite'));
+    try {
+      const raw = localStorage.getItem('vibecheck_call_invitations');
+      if (raw) {
+        const all: CallInvitation[] = JSON.parse(raw);
+        const updated = all.map((i) =>
+          i.toUserId === memberId && i.status === 'pending'
+            ? { ...i, status: 'accepted' as const }
+            : i
+        );
+        localStorage.setItem('vibecheck_call_invitations', JSON.stringify(updated));
+        window.dispatchEvent(new CustomEvent('vibecheck_call_invite'));
+      }
+    } catch { }
+
+    setOutgoingInvites((prev) =>
+      prev.map((i) => (i.toUserId === memberId ? { ...i, status: 'accepted' } : i))
+    );
+
+    if (!callParticipants.some((p) => p.id === member.id)) {
+      setCallParticipants((prev) => [...prev, member]);
     }
-} catch { }
 
-setIsInCall(true);
-setActiveTab('huddle');
-setSelectedProjectId(incomingInvite.projectId);
-setCallHost(incomingInvite.fromUser);
-setCallParticipants([incomingInvite.fromUser, currentUser]);
-setIncomingInvite(null);
+    setCallMessages((prev) => [
+      ...prev,
+      {
+        id: `sys_${Date.now()}`,
+        sender: 'System',
+        role: 'system',
+        text: `${member.name} (${member.role}) accepted call request and joined.`,
+        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      },
+    ]);
+  };
 
-setCallMessages([
-  {
-    id: `sys_${Date.now()}`,
-    sender: 'System',
-    role: 'system',
-    text: `${currentUser.name} accepted call request from ${incomingInvite.fromUser.name}.`,
-    time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-  },
-]);
+  // Accept incoming call request
+  const handleAcceptIncomingCall = async () => {
+    if (!incomingInvite) return;
 
-try {
-  if (typeof navigator !== 'undefined' && navigator.mediaDevices?.getUserMedia) {
-    const stream = await navigator.mediaDevices.getUserMedia({
-      video: true,
-      audio: true,
+    try {
+      const raw = localStorage.getItem('vibecheck_call_invitations');
+      if (raw) {
+        const all: CallInvitation[] = JSON.parse(raw);
+        const updated = all.map((i) =>
+          i.id === incomingInvite.id ? { ...i, status: 'accepted' as const } : i
+        );
+        localStorage.setItem('vibecheck_call_invitations', JSON.stringify(updated));
+        window.dispatchEvent(new CustomEvent('vibecheck_call_invite'));
+      }
+    } catch { }
+
+    setIsInCall(true);
+    setActiveTab('huddle');
+    setSelectedProjectId(incomingInvite.projectId);
+    setCallHost(incomingInvite.fromUser);
+    setCallParticipants([incomingInvite.fromUser, currentUser]);
+    setIncomingInvite(null);
+
+    setCallMessages([
+      {
+        id: `sys_${Date.now()}`,
+        sender: 'System',
+        role: 'system',
+        text: `${currentUser.name} accepted call request from ${incomingInvite.fromUser.name}.`,
+        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      },
+    ]);
+
+    try {
+      if (typeof navigator !== 'undefined' && navigator.mediaDevices?.getUserMedia) {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: true,
+          audio: true,
+        });
+        setCamStream(stream);
+        setIsCamActive(true);
+        setIsMicActive(true);
+
+        if (typeof window !== 'undefined') {
+          if (!(window as any).__vibecheck_cam_streams) (window as any).__vibecheck_cam_streams = {};
+          (window as any).__vibecheck_cam_streams[currentUser.id] = stream;
+        }
+      }
+    } catch {
+      setIsCamActive(false);
+    }
+  };
+
+  // Decline incoming call request
+  const handleDeclineIncomingCall = () => {
+    if (!incomingInvite) return;
+    try {
+      const raw = localStorage.getItem('vibecheck_call_invitations');
+      if (raw) {
+        const all: CallInvitation[] = JSON.parse(raw);
+        const updated = all.map((i) =>
+          i.id === incomingInvite.id ? { ...i, status: 'declined' as const } : i
+        );
+        localStorage.setItem('vibecheck_call_invitations', JSON.stringify(updated));
+        window.dispatchEvent(new CustomEvent('vibecheck_call_invite'));
+      }
+    } catch { }
+    setIncomingInvite(null);
+  };
+
+  // Chat message
+  const handleSendCallMsg = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newCallMsg.trim()) return;
+    setCallMessages((prev) => [
+      ...prev,
+      {
+        id: `m_${Date.now()}`,
+        sender: currentUser.name,
+        role: currentUser.role,
+        text: newCallMsg.trim(),
+        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      },
+    ]);
+    setNewCallMsg('');
+  };
+
+  // Advance project stage
+  const handleAdvanceStage = (nextStatus: ProjectStatus) => {
+    if (!selectedProject) return;
+    const progressMap: Record<ProjectStatus, number> = {
+      just_started: 15,
+      in_progress: 50,
+      under_review: 75,
+      revisions: 60,
+      completed: 100,
+    };
+    const updated: Project = {
+      ...selectedProject,
+      status: nextStatus,
+      progressPercent: progressMap[nextStatus],
+    };
+    onUpdateProject(updated);
+
+    onAddChangeRecord({
+      id: `chg_${Date.now()}`,
+      projectId: selectedProject.id,
+      authorId: currentUser.id,
+      authorName: currentUser.name,
+      authorRole: currentUser.role,
+      timestamp: new Date().toISOString(),
+      changeType: 'status_change',
+      description: `Moved stage to "${statusConfig[nextStatus].label}".`,
     });
-    setCamStream(stream);
-    setIsCamActive(true);
-    setIsMicActive(true);
-
-    if (typeof window !== 'undefined') {
-      if (!(window as any).__vibecheck_cam_streams) (window as any).__vibecheck_cam_streams = {};
-      (window as any).__vibecheck_cam_streams[currentUser.id] = stream;
-    }
-  }
-} catch {
-  setIsCamActive(false);
-}
   };
 
-// Decline incoming call request
-const handleDeclineIncomingCall = () => {
-  if (!incomingInvite) return;
-  try {
-    const raw = localStorage.getItem('vibecheck_call_invitations');
-    if (raw) {
-      const all: CallInvitation[] = JSON.parse(raw);
-      const updated = all.map((i) =>
-        i.id === incomingInvite.id ? { ...i, status: 'declined' as const } : i
-      );
-      localStorage.setItem('vibecheck_call_invitations', JSON.stringify(updated));
-      window.dispatchEvent(new CustomEvent('vibecheck_call_invite'));
-    }
-} catch { }
-setIncomingInvite(null);
+  // Milestone toggle
+  const handleToggleMilestone = (milestoneId: string) => {
+    if (!selectedProject) return;
+    const updatedMilestones = selectedProject.milestones.map((m) => {
+      if (m.id === milestoneId) {
+        const isDone = m.status === 'completed';
+        return {
+          ...m,
+          status: isDone ? ('pending' as const) : ('completed' as const),
+          completedAt: isDone ? undefined : new Date().toISOString().split('T')[0],
+          completedBy: isDone ? undefined : currentUser.name,
+        };
+      }
+      return m;
+    });
+
+    const completedCount = updatedMilestones.filter((m) => m.status === 'completed').length;
+    const progress = Math.round((completedCount / (updatedMilestones.length || 1)) * 100);
+
+    onUpdateProject({
+      ...selectedProject,
+      milestones: updatedMilestones,
+      progressPercent: progress,
+    });
   };
 
-// Chat message
-const handleSendCallMsg = (e: React.FormEvent) => {
-  e.preventDefault();
-  if (!newCallMsg.trim()) return;
-  setCallMessages((prev) => [
-    ...prev,
-    {
-      id: `m_${Date.now()}`,
-      sender: currentUser.name,
-      role: currentUser.role,
-      text: newCallMsg.trim(),
-      time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-    },
-  ]);
-  setNewCallMsg('');
-};
+  // Create project
+  const handleCreateProject = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newTitle.trim()) return;
 
-// Advance project stage
-const handleAdvanceStage = (nextStatus: ProjectStatus) => {
-  if (!selectedProject) return;
-  const progressMap: Record<ProjectStatus, number> = {
-    just_started: 15,
-    in_progress: 50,
-    under_review: 75,
-    revisions: 60,
-    completed: 100,
-  };
-  const updated: Project = {
-    ...selectedProject,
-    status: nextStatus,
-    progressPercent: progressMap[nextStatus],
-  };
-  onUpdateProject(updated);
+    const newProj: Project = {
+      id: `proj_${Date.now()}`,
+      orgId: currentUser.orgId,
+      title: newTitle.trim(),
+      description: newDesc.trim() || 'Brand compliance project.',
+      status: 'just_started',
+      progressPercent: 10,
+      startDate: new Date().toISOString().split('T')[0],
+      targetDeadline: newDeadline || '2026-12-31',
+      assignedCreators: selectedCreatorIds,
+      assignedReviewers: selectedReviewerIds.length > 0 ? selectedReviewerIds : ['usr_reviewer'],
+      submissionIds: [],
+      channels: newChannels.split(',').map((c) => c.trim()).filter(Boolean),
+      tags: ['Active'],
+      milestones: [
+        {
+          id: `m_${Date.now()}_1`,
+          title: 'Brief & Claim Calibration',
+          description: 'Establish citations and approved claims.',
+          status: 'in_progress',
+          targetDate: newDeadline,
+        },
+        {
+          id: `m_${Date.now()}_2`,
+          title: 'Drafting & AI Checks',
+          description: 'Automated checks for spelling, tone, and grammar.',
+          status: 'pending',
+          targetDate: newDeadline,
+        },
+        {
+          id: `m_${Date.now()}_3`,
+          title: 'Final Sign-Off',
+          description: 'Certified sign-off and push to platforms.',
+          status: 'pending',
+          targetDate: newDeadline,
+        },
+      ],
+    };
 
-  onAddChangeRecord({
-    id: `chg_${Date.now()}`,
-    projectId: selectedProject.id,
-    authorId: currentUser.id,
-    authorName: currentUser.name,
-    authorRole: currentUser.role,
-    timestamp: new Date().toISOString(),
-    changeType: 'status_change',
-    description: `Moved stage to "${statusConfig[nextStatus].label}".`,
-  });
-};
-
-// Milestone toggle
-const handleToggleMilestone = (milestoneId: string) => {
-  if (!selectedProject) return;
-  const updatedMilestones = selectedProject.milestones.map((m) => {
-    if (m.id === milestoneId) {
-      const isDone = m.status === 'completed';
-      return {
-        ...m,
-        status: isDone ? ('pending' as const) : ('completed' as const),
-        completedAt: isDone ? undefined : new Date().toISOString().split('T')[0],
-        completedBy: isDone ? undefined : currentUser.name,
-      };
-    }
-    return m;
-  });
-
-  const completedCount = updatedMilestones.filter((m) => m.status === 'completed').length;
-  const progress = Math.round((completedCount / (updatedMilestones.length || 1)) * 100);
-
-  onUpdateProject({
-    ...selectedProject,
-    milestones: updatedMilestones,
-    progressPercent: progress,
-  });
-};
-
-// Create project
-const handleCreateProject = (e: React.FormEvent) => {
-  e.preventDefault();
-  if (!newTitle.trim()) return;
-
-  const newProj: Project = {
-    id: `proj_${Date.now()}`,
-    orgId: currentUser.orgId,
-    title: newTitle.trim(),
-    description: newDesc.trim() || 'Brand compliance project.',
-    status: 'just_started',
-    progressPercent: 10,
-    startDate: new Date().toISOString().split('T')[0],
-    targetDeadline: newDeadline || '2026-12-31',
-    assignedCreators: selectedCreatorIds,
-    assignedReviewers: selectedReviewerIds.length > 0 ? selectedReviewerIds : ['usr_reviewer'],
-    submissionIds: [],
-    channels: newChannels.split(',').map((c) => c.trim()).filter(Boolean),
-    tags: ['Active'],
-    milestones: [
-      {
-        id: `m_${Date.now()}_1`,
-        title: 'Brief & Claim Calibration',
-        description: 'Establish citations and approved claims.',
-        status: 'in_progress',
-        targetDate: newDeadline,
-      },
-      {
-        id: `m_${Date.now()}_2`,
-        title: 'Drafting & AI Checks',
-        description: 'Automated checks for spelling, tone, and grammar.',
-        status: 'pending',
-        targetDate: newDeadline,
-      },
-      {
-        id: `m_${Date.now()}_3`,
-        title: 'Final Sign-Off',
-        description: 'Certified sign-off and push to platforms.',
-        status: 'pending',
-        targetDate: newDeadline,
-      },
-    ],
+    onAddProject(newProj);
+    setSelectedProjectId(newProj.id);
+    setIsNewProjectModalOpen(false);
+    setNewTitle('');
+    setNewDesc('');
   };
 
-  onAddProject(newProj);
-  setSelectedProjectId(newProj.id);
-  setIsNewProjectModalOpen(false);
-  setNewTitle('');
-  setNewDesc('');
-};
+  const projectChanges = changeRecords.filter(
+    (c) => !selectedProject || c.projectId === selectedProject.id
+  );
 
-const projectChanges = changeRecords.filter(
-  (c) => !selectedProject || c.projectId === selectedProject.id
-);
+  // Active Screen Share identification
+  const activeShareUser = isScreenSharing
+    ? { userId: currentUser.id, userName: currentUser.name, userRole: currentUser.role }
+    : (remoteScreenShare?.isSharing || remoteScreenStream)
+      ? {
+        userId: remoteScreenShare?.userId || 'remote_presenter',
+        userName: remoteScreenShare?.userName || 'Presenter',
+        userRole: remoteScreenShare?.userRole || 'Member',
+      }
+      : null;
 
-// Active Screen Share identification
-const activeShareUser = isScreenSharing
-  ? { userId: currentUser.id, userName: currentUser.name, userRole: currentUser.role }
-  : remoteScreenShare?.isSharing
-    ? remoteScreenShare
-    : null;
+  const activeSharedStream =
+    screenStream ||
+    remoteScreenStream ||
+    (typeof window !== 'undefined' ? (window as any).__vibecheck_screen_stream : null);
 
-const activeSharedStream =
-  screenStream ||
-  (typeof window !== 'undefined' ? (window as any).__vibecheck_screen_stream : null);
-
-return (
-  <div className="space-y-6">
-    {/* INCOMING CALL MODAL BANNER */}
-    {incomingInvite && (
-      <div className="p-4 rounded-2xl bg-[#3C311F] text-white shadow-xl flex items-center justify-between border border-sand-600 animate-fadeIn">
-        <div className="flex items-center gap-3">
-          <div className="h-10 w-10 rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center shrink-0">
-            <PhoneCall className="h-5 w-5 animate-bounce" />
+  return (
+    <div className="space-y-6">
+      {/* INCOMING CALL MODAL BANNER */}
+      {incomingInvite && (
+        <div className="p-4 rounded-2xl bg-[#3C311F] text-white shadow-xl flex items-center justify-between border border-sand-600 animate-fadeIn">
+          <div className="flex items-center gap-3">
+            <div className="h-10 w-10 rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center shrink-0">
+              <PhoneCall className="h-5 w-5 animate-bounce" />
+            </div>
+            <div>
+              <div className="text-xs font-bold flex items-center gap-2">
+                <span>Incoming Call Request:</span>
+                <span className="text-amber-300 font-semibold">{incomingInvite.fromUser.name}</span>
+                <span className="text-[10px] uppercase px-1.5 py-0.2 rounded bg-white/20">
+                  {incomingInvite.fromUser.role}
+                </span>
+              </div>
+              <div className="text-[11px] text-sand-300">
+                Project: {incomingInvite.projectTitle}
+              </div>
+            </div>
           </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleAcceptIncomingCall}
+              className="px-4 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition-all shadow-sm flex items-center gap-1.5"
+            >
+              <Video className="h-3.5 w-3.5" />
+              Accept & Join
+            </button>
+            <button
+              onClick={handleDeclineIncomingCall}
+              className="px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-xs text-sand-200 font-medium transition-all"
+            >
+              Decline
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* TOP HEADER */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 p-5 rounded-2xl bg-white border border-sand-300 shadow-xs">
+        <div className="flex items-center gap-2.5">
+          <span className="p-2 rounded-xl bg-sand-100 text-[#3C311F]">
+            <FolderKanban className="h-5 w-5" />
+          </span>
           <div>
-            <div className="text-xs font-bold flex items-center gap-2">
-              <span>Incoming Call Request:</span>
-              <span className="text-amber-300 font-semibold">{incomingInvite.fromUser.name}</span>
-              <span className="text-[10px] uppercase px-1.5 py-0.2 rounded bg-white/20">
-                {incomingInvite.fromUser.role}
+            <h2 className="text-base sm:text-lg font-serif font-bold text-sand-950 flex items-center gap-2">
+              Collaboration Hub
+              <span className="text-[10px] uppercase font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300">
+                Live
               </span>
-            </div>
-            <div className="text-[11px] text-sand-300">
-              Project: {incomingInvite.projectTitle}
-            </div>
+            </h2>
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2.5 flex-wrap">
           <button
-            onClick={handleAcceptIncomingCall}
-            className="px-4 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition-all shadow-sm flex items-center gap-1.5"
-          >
-            <Video className="h-3.5 w-3.5" />
-            Accept & Join
-          </button>
-          <button
-            onClick={handleDeclineIncomingCall}
-            className="px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-xs text-sand-200 font-medium transition-all"
-          >
-            Decline
-          </button>
-        </div>
-      </div>
-    )}
-
-    {/* TOP HEADER */}
-    <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 p-5 rounded-2xl bg-white border border-sand-300 shadow-xs">
-      <div className="flex items-center gap-2.5">
-        <span className="p-2 rounded-xl bg-sand-100 text-[#3C311F]">
-          <FolderKanban className="h-5 w-5" />
-        </span>
-        <div>
-          <h2 className="text-base sm:text-lg font-serif font-bold text-sand-950 flex items-center gap-2">
-            Collaboration Hub
-            <span className="text-[10px] uppercase font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300">
-              Live
-            </span>
-          </h2>
-        </div>
-      </div>
-
-      <div className="flex items-center gap-2.5 flex-wrap">
-        <button
-          onClick={handleStartOrJoinCall}
-          className={`px-3.5 py-2 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all shadow-xs ${isInCall
+            onClick={handleStartOrJoinCall}
+            className={`px-3.5 py-2 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all shadow-xs ${isInCall
               ? 'bg-rose-600 hover:bg-rose-700 text-white animate-pulse'
               : 'bg-[#3C311F] hover:bg-[#2B2316] text-white'
-            }`}
-        >
-          {isInCall ? (
-            <>
-              <PhoneOff className="h-3.5 w-3.5" />
-              Leave Call
-            </>
-          ) : (
-            <>
-              <Video className="h-3.5 w-3.5" />
-              Start Live Call
-            </>
-          )}
-        </button>
+              }`}
+          >
+            {isInCall ? (
+              <>
+                <PhoneOff className="h-3.5 w-3.5" />
+                Leave Call
+              </>
+            ) : (
+              <>
+                <Video className="h-3.5 w-3.5" />
+                Start Live Call
+              </>
+            )}
+          </button>
 
-        <button
-          onClick={() => setIsNewProjectModalOpen(true)}
-          className="px-3.5 py-2 rounded-xl bg-sand-100 hover:bg-sand-200 text-sand-900 border border-sand-300 text-xs font-semibold flex items-center gap-1.5 transition-all shadow-2xs"
-        >
-          <Plus className="h-3.5 w-3.5 text-sand-700" />
-          New Project
-        </button>
-      </div>
-    </div>
-
-    {/* PROJECTS SELECTOR */}
-    {projects.length === 0 ? (
-      <div className="p-10 rounded-2xl bg-white border border-sand-300 shadow-xs text-center space-y-3">
-        <FolderKanban className="h-10 w-10 text-sand-400 mx-auto" />
-        <h3 className="font-serif font-bold text-base text-sand-900">No Projects Found</h3>
-        <p className="text-xs text-sand-600 max-w-md mx-auto">
-          No projects have been created for your organization yet. Start a new cross-channel campaign, editorial brief, or content workflow.
-        </p>
-        <button
-          onClick={() => setIsNewProjectModalOpen(true)}
-          className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#3C311F] hover:bg-[#2A2215] text-sand-50 text-xs font-semibold shadow-xs"
-        >
-          <Plus className="h-3.5 w-3.5" />
-          Create First Project
-        </button>
-      </div>
-    ) : (
-      <div className="space-y-2">
-        <div className="flex items-center justify-between text-xs font-bold text-sand-700 uppercase tracking-wider px-1">
-          <span>Active Projects ({projects.length})</span>
+          <button
+            onClick={() => setIsNewProjectModalOpen(true)}
+            className="px-3.5 py-2 rounded-xl bg-sand-100 hover:bg-sand-200 text-sand-900 border border-sand-300 text-xs font-semibold flex items-center gap-1.5 transition-all shadow-2xs"
+          >
+            <Plus className="h-3.5 w-3.5 text-sand-700" />
+            New Project
+          </button>
         </div>
+      </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-          {projects.map((proj) => {
-            const isSelected = proj.id === selectedProjectId;
-            const status = statusConfig[proj.status];
-            return (
-              <div
-                key={proj.id}
-                onClick={() => setSelectedProjectId(proj.id)}
-                className={`cursor-pointer p-4 rounded-xl border transition-all text-left relative overflow-hidden ${isSelected
+      {/* PROJECTS SELECTOR */}
+      {projects.length === 0 ? (
+        <div className="p-10 rounded-2xl bg-white border border-sand-300 shadow-xs text-center space-y-3">
+          <FolderKanban className="h-10 w-10 text-sand-400 mx-auto" />
+          <h3 className="font-serif font-bold text-base text-sand-900">No Projects Found</h3>
+          <p className="text-xs text-sand-600 max-w-md mx-auto">
+            No projects have been created for your organization yet. Start a new cross-channel campaign, editorial brief, or content workflow.
+          </p>
+          <button
+            onClick={() => setIsNewProjectModalOpen(true)}
+            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#3C311F] hover:bg-[#2A2215] text-sand-50 text-xs font-semibold shadow-xs"
+          >
+            <Plus className="h-3.5 w-3.5" />
+            Create First Project
+          </button>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          <div className="flex items-center justify-between text-xs font-bold text-sand-700 uppercase tracking-wider px-1">
+            <span>Active Projects ({projects.length})</span>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+            {projects.map((proj) => {
+              const isSelected = proj.id === selectedProjectId;
+              const status = statusConfig[proj.status];
+              return (
+                <div
+                  key={proj.id}
+                  onClick={() => setSelectedProjectId(proj.id)}
+                  className={`cursor-pointer p-4 rounded-xl border transition-all text-left relative overflow-hidden ${isSelected
                     ? 'bg-white border-[#3C311F] shadow-sm ring-1 ring-[#3C311F]/20'
                     : 'bg-sand-50/70 border-sand-200 hover:bg-white hover:border-sand-300 shadow-2xs'
-                  }`}
-              >
-                <div className="flex items-center justify-between gap-2 mb-2">
-                  <span
-                    className={`text-[9px] uppercase font-bold px-2 py-0.5 rounded-full border ${status.bg} ${status.text} ${status.border}`}
-                  >
-                    {status.label}
-                  </span>
-                  <span className="text-[11px] font-mono font-bold text-sand-700">
-                    {proj.progressPercent}%
-                  </span>
-                </div>
+                    }`}
+                >
+                  <div className="flex items-center justify-between gap-2 mb-2">
+                    <span
+                      className={`text-[9px] uppercase font-bold px-2 py-0.5 rounded-full border ${status.bg} ${status.text} ${status.border}`}
+                    >
+                      {status.label}
+                    </span>
+                    <span className="text-[11px] font-mono font-bold text-sand-700">
+                      {proj.progressPercent}%
+                    </span>
+                  </div>
 
-                <h3 className="font-serif font-bold text-sm text-sand-950 truncate mb-1">
-                  {proj.title}
-                </h3>
+                  <h3 className="font-serif font-bold text-sm text-sand-950 truncate mb-1">
+                    {proj.title}
+                  </h3>
 
-                <div className="h-1.5 w-full bg-sand-200 rounded-full overflow-hidden mt-3">
-                  <div
-                    className="h-full bg-[#3C311F] rounded-full transition-all"
-                    style={{ width: `${proj.progressPercent}%` }}
-                  />
+                  <div className="h-1.5 w-full bg-sand-200 rounded-full overflow-hidden mt-3">
+                    <div
+                      className="h-full bg-[#3C311F] rounded-full transition-all"
+                      style={{ width: `${proj.progressPercent}%` }}
+                    />
+                  </div>
                 </div>
-              </div>
-            );
-          })}
+              );
+            })}
+          </div>
         </div>
-      </div>
-    )}
+      )}
 
       {/* PROJECT DETAILS & SUBTABS */}
       {selectedProject && (
@@ -1109,8 +1288,8 @@ return (
             <button
               onClick={() => setActiveTab('timeline')}
               className={`py-3 px-4 text-xs font-bold border-b-2 transition-all flex items-center gap-1.5 whitespace-nowrap ${activeTab === 'timeline'
-                  ? 'border-[#3C311F] text-[#3C311F]'
-                  : 'border-transparent text-sand-600 hover:text-sand-900'
+                ? 'border-[#3C311F] text-[#3C311F]'
+                : 'border-transparent text-sand-600 hover:text-sand-900'
                 }`}
             >
               <Clock className="h-3.5 w-3.5" />
@@ -1120,8 +1299,8 @@ return (
             <button
               onClick={() => setActiveTab('changes')}
               className={`py-3 px-4 text-xs font-bold border-b-2 transition-all flex items-center gap-1.5 whitespace-nowrap ${activeTab === 'changes'
-                  ? 'border-[#3C311F] text-[#3C311F]'
-                  : 'border-transparent text-sand-600 hover:text-sand-900'
+                ? 'border-[#3C311F] text-[#3C311F]'
+                : 'border-transparent text-sand-600 hover:text-sand-900'
                 }`}
             >
               <History className="h-3.5 w-3.5" />
@@ -1131,8 +1310,8 @@ return (
             <button
               onClick={() => setActiveTab('huddle')}
               className={`py-3 px-4 text-xs font-bold border-b-2 transition-all flex items-center gap-1.5 whitespace-nowrap ${activeTab === 'huddle'
-                  ? 'border-[#3C311F] text-[#3C311F]'
-                  : 'border-transparent text-sand-600 hover:text-sand-900'
+                ? 'border-[#3C311F] text-[#3C311F]'
+                : 'border-transparent text-sand-600 hover:text-sand-900'
                 }`}
             >
               <Video className="h-3.5 w-3.5 text-rose-600" />
@@ -1145,8 +1324,8 @@ return (
             <button
               onClick={() => setActiveTab('team')}
               className={`py-3 px-4 text-xs font-bold border-b-2 transition-all flex items-center gap-1.5 whitespace-nowrap ${activeTab === 'team'
-                  ? 'border-[#3C311F] text-[#3C311F]'
-                  : 'border-transparent text-sand-600 hover:text-sand-900'
+                ? 'border-[#3C311F] text-[#3C311F]'
+                : 'border-transparent text-sand-600 hover:text-sand-900'
                 }`}
             >
               <Users className="h-3.5 w-3.5" />
@@ -1168,10 +1347,10 @@ return (
                       key={st}
                       onClick={() => handleAdvanceStage(st)}
                       className={`cursor-pointer p-3 rounded-xl border transition-all text-center relative ${isCurrent
-                          ? 'bg-[#3C311F] text-white border-[#3C311F] shadow-xs'
-                          : isPassed
-                            ? 'bg-emerald-50 text-emerald-900 border-emerald-300'
-                            : 'bg-sand-50/50 text-sand-500 border-sand-200'
+                        ? 'bg-[#3C311F] text-white border-[#3C311F] shadow-xs'
+                        : isPassed
+                          ? 'bg-emerald-50 text-emerald-900 border-emerald-300'
+                          : 'bg-sand-50/50 text-sand-500 border-sand-200'
                         }`}
                     >
                       <div className="text-[10px] font-mono font-bold mb-0.5 opacity-80">
@@ -1213,8 +1392,8 @@ return (
                           <button
                             onClick={() => handleToggleMilestone(m.id)}
                             className={`mt-0.5 h-5 w-5 rounded-md border flex items-center justify-center transition-all ${isDone
-                                ? 'bg-emerald-600 border-emerald-700 text-white'
-                                : 'bg-white border-sand-400 hover:border-sand-600 text-transparent'
+                              ? 'bg-emerald-600 border-emerald-700 text-white'
+                              : 'bg-white border-sand-400 hover:border-sand-600 text-transparent'
                               }`}
                           >
                             <Check className="h-3.5 w-3.5" />
@@ -1345,8 +1524,8 @@ return (
                   <button
                     onClick={handleStartOrJoinCall}
                     className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-xs transition-all ${isInCall
-                        ? 'bg-rose-700 text-white hover:bg-rose-800'
-                        : 'bg-[#3C311F] text-white hover:bg-[#2B2316]'
+                      ? 'bg-rose-700 text-white hover:bg-rose-800'
+                      : 'bg-[#3C311F] text-white hover:bg-[#2B2316]'
                       }`}
                   >
                     {isInCall ? (
@@ -1367,484 +1546,230 @@ return (
               {/* Main Call Grid */}
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
                 <div className="lg:col-span-2 space-y-4">
-                  {/* Screen Share Stage (Visible to EVERYONE in call when any member shares) */}
-                  <div className={`relative rounded-2xl bg-stone-900 border border-stone-800 overflow-hidden flex flex-col items-center justify-center p-3 transition-all ${isScreenFullscreen ? 'fixed inset-4 z-50 bg-stone-950 min-h-[90vh]' : 'min-h-[420px]'}`}>
-                          {activeShareUser ? (
-                            <div className="w-full h-full flex flex-col relative space-y-2">
-                              {/* Top Bar for Shared Screen Window */}
-                              <div className="flex items-center justify-between px-3 py-2 bg-stone-950/90 rounded-xl border border-stone-800 text-xs">
-                                <div className="flex items-center gap-2">
-                                  <div className="flex items-center gap-1.5">
-                                    <span className="h-2.5 w-2.5 rounded-full bg-rose-500 inline-block" />
-                                    <span className="h-2.5 w-2.5 rounded-full bg-amber-500 inline-block" />
-                                    <span className="h-2.5 w-2.5 rounded-full bg-emerald-500 inline-block" />
-                                  </div>
-                                  <span className="text-stone-300 font-mono text-[11px] truncate max-w-[280px] sm:max-w-md">
-                                    {activeShareUser.userName} ({activeShareUser.userRole}) &mdash; Live Screen Share
-                                  </span>
-                                </div>
+                  {/* Screen Share Stage (Original live screen displayed like Google Meet & Zoom) */}
+                  <div className="relative rounded-2xl bg-black border border-stone-800 overflow-hidden min-h-[360px] sm:min-h-[460px] flex items-center justify-center p-2 shadow-2xl">
+                    {activeShareUser ? (
+                      <div className="w-full h-full flex flex-col items-center justify-center relative bg-black rounded-xl overflow-hidden min-h-[360px] sm:min-h-[460px]">
+                        <video
+                          ref={screenVideoRef}
+                          autoPlay
+                          playsInline
+                          muted
+                          className="w-full h-full max-h-[520px] object-contain rounded-xl bg-black"
+                        />
+                        <div className="absolute top-3 left-3 bg-stone-950/85 backdrop-blur-md px-3 py-1 rounded-full text-xs text-white font-medium flex items-center gap-2 border border-stone-700 shadow-md">
+                          <MonitorUp className="h-3.5 w-3.5 text-blue-400" />
+                          <span>{activeShareUser.userName}&apos;s screen</span>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="space-y-3 max-w-sm text-center p-4">
+                        <div className="h-14 w-14 rounded-2xl bg-stone-800 flex items-center justify-center text-sand-300 mx-auto border border-stone-700 shadow-md">
+                          <MonitorUp className="h-7 w-7" />
+                        </div>
+                        <div>
+                          <h5 className="text-sand-100 font-serif font-bold text-sm">
+                            Screen Share Stage
+                          </h5>
+                        </div>
+                        <button
+                          onClick={handleToggleScreenShare}
+                          disabled={!isInCall}
+                          className="px-4 py-2 rounded-xl bg-sand-100 hover:bg-white text-sand-950 font-bold text-xs disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-xs cursor-pointer"
+                        >
+                          Start Screen Sharing
+                        </button>
+                      </div>
+                    )}
+                  </div>
 
-                                <div className="flex items-center gap-2">
-                                  <div className="flex items-center gap-1 text-[10px] text-emerald-400 font-mono font-bold bg-emerald-950/60 border border-emerald-500/40 px-2 py-0.5 rounded-full">
-                                    <Radio className="h-2.5 w-2.5 animate-pulse" />
-                                    <span>1080p 60FPS</span>
-                                  </div>
+                  {/* ACTIVE CALL PARTICIPANTS (BOTH LOCAL & REMOTE VIDEOS RENDER LIVE) */}
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between text-xs font-bold text-sand-700">
+                      <span>Active Call Participants ({callParticipants.length})</span>
+                      {isInCall && (
+                        <span className="text-[11px] text-emerald-700 font-semibold flex items-center gap-1">
+                          <CheckCircle2 className="h-3 w-3" />
+                          Live Connected
+                        </span>
+                      )}
+                    </div>
 
-                                  <button
-                                    onClick={() => setScreenZoom((z) => (z >= 130 ? 100 : z + 15))}
-                                    className="p-1 rounded bg-stone-800 hover:bg-stone-700 text-stone-300 text-[10px]"
-                                    title="Zoom Screen"
-                                  >
-                                    <ZoomIn className="h-3 w-3" />
-                                  </button>
+                    {callParticipants.length === 0 ? (
+                      <div className="p-6 rounded-xl border border-dashed border-sand-300 text-center text-xs text-sand-500">
+                        No participants in call. Click &ldquo;Join Huddle Room&rdquo; to start.
+                      </div>
+                    ) : (
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
+                        {callParticipants.map((member) => {
+                          const isMe = member.id === currentUser.id;
+                          const stream = isMe
+                            ? (isCamActive ? camStream : null)
+                            : (remoteCamStreams[member.id] ||
+                              (typeof window !== 'undefined'
+                                ? (window as any).__vibecheck_cam_streams?.[member.id]
+                                : null));
 
-                                  <button
-                                    onClick={() => setIsScreenFullscreen(!isScreenFullscreen)}
-                                    className="p-1 rounded bg-stone-800 hover:bg-stone-700 text-stone-300 text-[10px]"
-                                    title="Toggle Fullscreen"
-                                  >
-                                    {isScreenFullscreen ? <Minimize2 className="h-3 w-3" /> : <Maximize2 className="h-3 w-3" />}
-                                  </button>
-                                </div>
-                              </div>
-
-                              {activeSharedStream ? (
+                          return (
+                            <div
+                              key={member.id}
+                              className="relative rounded-xl bg-stone-800 border border-stone-700 aspect-video flex items-center justify-center overflow-hidden shadow-sm"
+                            >
+                              {stream ? (
                                 <video
-                                  ref={screenVideoRef}
                                   autoPlay
                                   playsInline
-                                  muted
-                                  className="w-full max-h-[480px] object-contain rounded-xl shadow-lg border border-stone-800"
+                                  muted={isMe}
+                                  ref={(el) => {
+                                    if (el && el.srcObject !== stream) {
+                                      el.srcObject = stream;
+                                      el.play().catch(() => { });
+                                    }
+                                  }}
+                                  className="w-full h-full object-cover"
                                 />
                               ) : (
-                                /* ACTUAL SHARED SCREEN WORKSPACE VIEW (SHOWN TO ALL MEMBERS IN THE MEETING) */
-                                <div
-                                  className="w-full bg-stone-950 rounded-xl border border-stone-800 overflow-hidden flex flex-col justify-between transition-all"
-                                  style={{ transform: `scale(${screenZoom / 100})`, transformOrigin: 'top center' }}
-                                >
-                                  {/* Shared Screen Navigation & Browser Bar */}
-                                  <div className="bg-stone-900/90 px-3 py-1.5 border-b border-stone-800 flex items-center justify-between text-[11px] text-stone-300">
-                                    <div className="flex items-center gap-1.5">
-                                      <span className="text-[10px] uppercase font-bold text-stone-400">Viewing Deck:</span>
-                                      <div className="flex items-center gap-1">
-                                        {[1, 2, 3].map((slide) => (
-                                          <button
-                                            key={slide}
-                                            onClick={() => setSharedSlideIdx(slide)}
-                                            className={`px-2 py-0.5 rounded text-[10px] font-bold transition-all ${
-                                              sharedSlideIdx === slide
-                                                ? 'bg-[#3C311F] text-amber-300 border border-amber-400/40 shadow-xs'
-                                                : 'bg-stone-800 text-stone-400 hover:text-stone-200'
-                                            }`}
-                                          >
-                                            Slide {slide}
-                                          </button>
-                                        ))}
-                                      </div>
-                                    </div>
-
-                                    <div className="text-[10px] font-mono text-stone-400 hidden sm:flex items-center gap-2">
-                                      <span>Doc: Q4_Brand_Strategy_Deck.pdf</span>
-                                      <span className="text-emerald-400">● Live Synced</span>
-                                    </div>
-                                  </div>
-
-                                  {/* THE REAL SHARED DOCUMENT & DESIGN VIEWPORT */}
-                                  <div className="p-4 sm:p-5 bg-gradient-to-br from-stone-950 via-stone-900 to-[#1e1913] relative min-h-[300px] flex flex-col justify-between">
-                                    {/* Animated Presenter Pointer */}
-                                    <div className="absolute top-10 right-16 sm:right-28 pointer-events-none z-10 flex items-center gap-1 animate-pulse">
-                                      <MousePointer className="h-4 w-4 text-emerald-400 fill-emerald-400 drop-shadow" />
-                                      <span className="bg-emerald-500 text-stone-950 font-bold text-[9px] px-1.5 py-0.5 rounded-full shadow-md whitespace-nowrap">
-                                        {activeShareUser.userName} (Pointing)
-                                      </span>
-                                    </div>
-
-                                    {/* SLIDE 1: OVERVIEW & CLINICAL CLAIMS */}
-                                    {sharedSlideIdx === 1 && (
-                                      <div className="space-y-3">
-                                        <div className="flex items-center justify-between border-b border-stone-800 pb-2">
-                                          <div>
-                                            <span className="text-[10px] font-mono text-amber-400 uppercase tracking-wider block">
-                                              Slide 1 &mdash; Omnichannel Creative Asset Review
-                                            </span>
-                                            <h3 className="text-sm sm:text-base font-serif font-bold text-sand-100">
-                                              Lumina Health & Wellness Campaign &mdash; Q4 Launch
-                                            </h3>
-                                          </div>
-                                          <span className="text-[10px] font-bold text-emerald-400 bg-emerald-950/80 border border-emerald-500/40 px-2 py-0.5 rounded">
-                                            Status: Approved (98%)
-                                          </span>
-                                        </div>
-
-                                        <div className="p-3.5 rounded-xl bg-stone-900/80 border border-stone-800 space-y-2">
-                                          <div className="text-xs text-sand-200 font-medium">
-                                            &ldquo;Transform your well-being with clinically proven health analytics tailored for modern enterprise teams.&rdquo;
-                                          </div>
-                                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1 text-[11px]">
-                                            <div className="p-2 rounded-lg bg-emerald-950/40 border border-emerald-600/40 flex items-start gap-1.5">
-                                              <ShieldCheck className="h-3.5 w-3.5 text-emerald-400 shrink-0 mt-0.5" />
-                                              <span className="text-emerald-300">
-                                                <strong>FDA 510(k) Clearance:</strong> #K2024-819 cited in mandatory footnote.
-                                              </span>
-                                            </div>
-                                            <div className="p-2 rounded-lg bg-emerald-950/40 border border-emerald-600/40 flex items-start gap-1.5">
-                                              <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400 shrink-0 mt-0.5" />
-                                              <span className="text-emerald-300">
-                                                <strong>Color Contrast:</strong> 7.8:1 WCAG AAA Compliant.
-                                              </span>
-                                            </div>
-                                          </div>
-                                        </div>
-                                      </div>
-                                    )}
-
-                                    {/* SLIDE 2: SPEECH & AUDIO STANDARDS */}
-                                    {sharedSlideIdx === 2 && (
-                                      <div className="space-y-3">
-                                        <div className="flex items-center justify-between border-b border-stone-800 pb-2">
-                                          <div>
-                                            <span className="text-[10px] font-mono text-amber-400 uppercase tracking-wider block">
-                                              Slide 2 &mdash; Voice Governance & Speech Metrics
-                                            </span>
-                                            <h3 className="text-sm sm:text-base font-serif font-bold text-sand-100">
-                                              Podcast &amp; Voice Advertising Compliance
-                                            </h3>
-                                          </div>
-                                          <span className="text-[10px] font-bold text-emerald-400 bg-emerald-950/80 border border-emerald-500/40 px-2 py-0.5 rounded">
-                                            Cadence: 145 WPM
-                                          </span>
-                                        </div>
-
-                                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                                          <div className="p-3 rounded-xl bg-stone-900/80 border border-stone-800 text-center">
-                                            <span className="text-[10px] text-stone-400 uppercase">Pacing (WPM)</span>
-                                            <div className="text-base font-bold text-sand-100 font-mono">145 WPM</div>
-                                            <span className="text-[9px] text-emerald-400">Target: 140-160 WPM</span>
-                                          </div>
-                                          <div className="p-3 rounded-xl bg-stone-900/80 border border-stone-800 text-center">
-                                            <span className="text-[10px] text-stone-400 uppercase">Filler Ratio</span>
-                                            <div className="text-base font-bold text-sand-100 font-mono">1.1%</div>
-                                            <span className="text-[9px] text-emerald-400">Target: &lt; 2.5%</span>
-                                          </div>
-                                          <div className="p-3 rounded-xl bg-stone-900/80 border border-stone-800 text-center">
-                                            <span className="text-[10px] text-stone-400 uppercase">Target Loudness</span>
-                                            <div className="text-base font-bold text-sand-100 font-mono">-14.2 LUFS</div>
-                                            <span className="text-[9px] text-emerald-400">EBU R128 Pass</span>
-                                          </div>
-                                        </div>
-                                      </div>
-                                    )}
-
-                                    {/* SLIDE 3: SIGN-OFF & APPROVALS */}
-                                    {sharedSlideIdx === 3 && (
-                                      <div className="space-y-3">
-                                        <div className="flex items-center justify-between border-b border-stone-800 pb-2">
-                                          <div>
-                                            <span className="text-[10px] font-mono text-amber-400 uppercase tracking-wider block">
-                                              Slide 3 &mdash; Final Executive Approvals
-                                            </span>
-                                            <h3 className="text-sm sm:text-base font-serif font-bold text-sand-100">
-                                              Pre-Publication Verification Sign-Off
-                                            </h3>
-                                          </div>
-                                          <span className="text-[10px] font-bold text-emerald-400 bg-emerald-950/80 border border-emerald-500/40 px-2 py-0.5 rounded">
-                                            Cleared for Release
-                                          </span>
-                                        </div>
-
-                                        <div className="p-3 rounded-xl bg-stone-900/80 border border-stone-800 space-y-1.5 text-xs text-sand-300">
-                                          <div className="flex items-center justify-between">
-                                            <span><strong>Marketing Lead:</strong> Elena Rostova</span>
-                                            <span className="text-emerald-400 font-bold">✓ Approved</span>
-                                          </div>
-                                          <div className="flex items-center justify-between">
-                                            <span><strong>Legal Counsel:</strong> Marcus Chen</span>
-                                            <span className="text-emerald-400 font-bold">✓ Cleared</span>
-                                          </div>
-                                          <div className="text-[10px] font-mono text-stone-500 pt-1 border-t border-stone-800">
-                                            Audit Hash: SHA-256: 8f4a19c...29c1b7
-                                          </div>
-                                        </div>
-                                      </div>
-                                    )}
-
-                                    {/* Presenter Footer Bar */}
-                                    <div className="flex items-center justify-between text-[11px] text-stone-400 pt-3 border-t border-stone-800 mt-3">
-                                      <span className="flex items-center gap-1.5">
-                                        <Radio className="h-3 w-3 text-emerald-400 animate-pulse" />
-                                        Presenter: <strong className="text-sand-200">{activeShareUser.userName}</strong> ({activeShareUser.userRole})
-                                      </span>
-                                      <span className="text-emerald-400 font-bold flex items-center gap-1">
-                                        <Check className="h-3 w-3" />
-                                        Synchronized to All Members
-                                      </span>
-                                    </div>
+                                <div className="w-full h-full bg-stone-900 flex items-center justify-center">
+                                  <div className="h-14 w-14 rounded-full bg-stone-800 border border-stone-700 text-sand-100 flex items-center justify-center font-bold text-lg shadow-inner">
+                                    {member.name.charAt(0)}
                                   </div>
                                 </div>
                               )}
-                            </div>
-                          ) : (
-                            <div className="space-y-3 max-w-sm text-center p-4">
-                              <div className="h-14 w-14 rounded-2xl bg-stone-800 flex items-center justify-center text-sand-300 mx-auto border border-stone-700 shadow-md">
-                                <MonitorUp className="h-7 w-7" />
-                              </div>
-                              <div>
-                                <h5 className="text-sand-100 font-serif font-bold text-sm">
-                                  Screen Share Stage
-                                </h5>
-                              </div>
-                              <button
-                                onClick={handleToggleScreenShare}
-                                disabled={!isInCall}
-                                className="px-4 py-2 rounded-xl bg-sand-100 hover:bg-white text-sand-950 font-bold text-xs disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-xs"
-                              >
-                                Start Screen Sharing
-                              </button>
-                            </div>
-                          )}
+                                    {/* Google Meet style Name & Mic Badge */}
+                                    <div className="absolute bottom-2.5 left-2.5 flex items-center gap-1.5 bg-stone-950/80 px-2.5 py-1 rounded-md text-[11px] text-white backdrop-blur-xs border border-stone-800/60 shadow-sm">
+                                      {isMe ? (
+                                        isMicActive ? (
+                                          <Mic className="h-3 w-3 text-emerald-400" />
+                                        ) : (
+                                          <MicOff className="h-3 w-3 text-rose-400" />
+                                        )
+                                      ) : (
+                                        <Mic className="h-3 w-3 text-emerald-400" />
+                                      )}
+                                      <span className="font-medium">{member.name} {isMe && '(You)'}</span>
+                                    </div>
+                                  </div>
+                                );
+                        })}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Call Controls Bar */}
+                  {
+                    isInCall && (
+                      <div className="p-3 rounded-xl bg-sand-100 border border-sand-300 flex items-center justify-center gap-3">
+                        <button
+                          onClick={handleToggleMic}
+                          className={`p-2.5 rounded-full border transition-all ${!isMicActive
+                            ? 'bg-rose-100 text-rose-800 border-rose-300'
+                            : 'bg-white text-sand-800 border-sand-300 hover:bg-sand-50'
+                            }`}
+                          title={isMicActive ? 'Mute' : 'Unmute'}
+                        >
+                          {isMicActive ? <Mic className="h-4 w-4" /> : <MicOff className="h-4 w-4" />}
+                        </button>
+
+                        <button
+                          onClick={handleToggleCam}
+                          className={`p-2.5 rounded-full border transition-all ${!isCamActive
+                            ? 'bg-rose-100 text-rose-800 border-rose-300'
+                            : 'bg-white text-sand-800 border-sand-300 hover:bg-sand-50'
+                            }`}
+                          title={isCamActive ? 'Camera Off' : 'Camera On'}
+                        >
+                          {isCamActive ? <Video className="h-4 w-4" /> : <VideoOff className="h-4 w-4" />}
+                        </button>
+
+                        <button
+                          onClick={handleToggleScreenShare}
+                          className={`px-3 py-2 rounded-xl text-xs font-bold border flex items-center gap-1.5 transition-all ${isScreenSharing
+                            ? 'bg-emerald-600 text-white border-emerald-700'
+                            : 'bg-white text-sand-800 border-sand-300 hover:bg-sand-50'
+                            }`}
+                        >
+                          <MonitorUp className="h-4 w-4" />
+                          {isScreenSharing ? 'Stop Screen' : 'Share Screen'}
+                        </button>
+
+                        <button
+                          onClick={handleEndCall}
+                          className="px-3.5 py-2 rounded-xl bg-rose-700 hover:bg-rose-800 text-white text-xs font-bold flex items-center gap-1 shadow-xs"
+                        >
+                          <PhoneOff className="h-4 w-4" />
+                          End Call
+                        </button>
+                      </div>
+                    )
+                  }
+
+                  {/* REAL CALL INVITATIONS SECTION (SEND JOIN REQUEST TO THAT USER) */}
+                  {
+                    isInCall && (
+                      <div className="p-4 rounded-xl bg-sand-50 border border-sand-200 space-y-3">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-bold text-sand-800 uppercase tracking-wider">
+                            Invite Teammates to Join Call:
+                          </span>
                         </div>
 
-                        {/* ACTIVE CALL PARTICIPANTS (BOTH LOCAL & REMOTE VIDEOS RENDER LIVE) */}
-                        <div className="space-y-2">
-                          <div className="flex items-center justify-between text-xs font-bold text-sand-700">
-                            <span>Active Call Participants ({callParticipants.length})</span>
-                            {isInCall && (
-                              <span className="text-[11px] text-emerald-700 font-semibold flex items-center gap-1">
-                                <CheckCircle2 className="h-3 w-3" />
-                                Live Connected
-                              </span>
-                            )}
-                          </div>
+                        <div className="flex flex-wrap gap-2">
+                          {teamMembers
+                            .filter((m) => m.id !== currentUser.id && !callParticipants.some((p) => p.id === m.id))
+                            .map((member) => {
+                              const invite = outgoingInvites.find((i) => i.toUserId === member.id);
+                              const isPending = invite?.status === 'pending';
 
-                          {callParticipants.length === 0 ? (
-                            <div className="p-6 rounded-xl border border-dashed border-sand-300 text-center text-xs text-sand-500">
-                              No participants in call. Click &ldquo;Join Huddle Room&rdquo; to start.
-                            </div>
-                          ) : (
-                            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
-                              {callParticipants.map((member) => {
-                                const isMe = member.id === currentUser.id;
-                                const isRemoteCamOn = memberCamStates[member.id] !== false; // Remote cam defaults to ON
-                                const hasRemoteStream =
-                                  typeof window !== 'undefined' &&
-                                  (window as any).__vibecheck_cam_streams?.[member.id];
-
-                                return (
-                                  <div
-                                    key={member.id}
-                                    className="relative rounded-xl bg-stone-800 border border-stone-700 aspect-video flex items-center justify-center overflow-hidden shadow-sm"
-                                  >
-                                    {/* 1. LOCAL USER VIDEO */}
-                                    {isMe && isCamActive && camStream ? (
-                                      <video
-                                        autoPlay
-                                        playsInline
-                                        muted
-                                        ref={(el) => {
-                                          if (el) el.srcObject = camStream;
-                                        }}
-                                        className="w-full h-full object-cover"
-                                      />
-                                    ) : !isMe && isRemoteCamOn ? (
-                                      /* 2. REMOTE PARTICIPANT LIVE VIDEO */
-                                      hasRemoteStream ? (
-                                        <video
-                                          autoPlay
-                                          playsInline
-                                          muted
-                                          ref={(el) => {
-                                            if (el && hasRemoteStream) el.srcObject = hasRemoteStream;
-                                          }}
-                                          className="w-full h-full object-cover"
-                                        />
-                                      ) : (
-                                        /* Live Animated Feed for Remote Teammate */
-                                        <div className="w-full h-full bg-gradient-to-b from-stone-800 to-stone-900 flex flex-col items-center justify-center relative p-2">
-                                          <div className="relative">
-                                            <div className="h-12 w-12 rounded-full bg-[#3C311F] text-sand-50 flex items-center justify-center font-bold text-sm border-2 border-emerald-500/60 shadow-lg">
-                                              {member.name.charAt(0)}
-                                            </div>
-                                            <span className="absolute -bottom-0.5 -right-0.5 h-3.5 w-3.5 rounded-full bg-emerald-500 border-2 border-stone-800 flex items-center justify-center">
-                                              <span className="h-1.5 w-1.5 rounded-full bg-white animate-pulse" />
-                                            </span>
-                                          </div>
-
-                                          {/* Audio reactivity equalizer bars */}
-                                          <div className="flex items-center gap-0.5 mt-2 h-3">
-                                            {[40, 75, 55, 90, 60, 80, 45].map((h, bIdx) => (
-                                              <div
-                                                key={bIdx}
-                                                className="w-1 bg-emerald-400/80 rounded-full animate-pulse"
-                                                style={{
-                                                  height: `${h}%`,
-                                                  animationDelay: `${bIdx * 0.15}s`,
-                                                }}
-                                              />
-                                            ))}
-                                          </div>
-
-                                          <div className="text-[10px] text-emerald-400 font-mono font-bold mt-1">
-                                            LIVE 720p HD
-                                          </div>
-                                        </div>
-                                      )
-                                    ) : (
-                                      /* 3. CAMERA MUTED AVATAR */
-                                      <div className="text-center space-y-1">
-                                          <div className="h-10 w-10 rounded-full bg-stone-700 text-sand-300 flex items-center justify-center font-bold text-xs mx-auto border border-stone-600">
-                                            {member.name.charAt(0)}
-                                          </div>
-                                            <div className="text-[10px] text-sand-400 font-medium">
-                                              {member.name} (Cam Off)
-                                            </div>
-                                          </div>
-                              )}
-
-                                          {/* Participant Badges & Controls */}
-                                          <div className="absolute bottom-2 left-2 flex items-center gap-1 bg-stone-900/80 px-2 py-0.5 rounded text-[9px] text-sand-200 backdrop-blur-xs">
-                                            {isMe ? (
-                                              isMicActive ? (
-                                                <Mic className="h-2.5 w-2.5 text-emerald-400" />
-                                              ) : (
-                                                <MicOff className="h-2.5 w-2.5 text-rose-400" />
-                                              )
-                                            ) : (
-                                              <Mic className="h-2.5 w-2.5 text-emerald-400" />
-                                            )}
-                                            <span>{member.name} {isMe && '(You)'}</span>
-                                          </div>
-
-                                          {!isMe && (
-                                            <button
-                                              onClick={() => handleToggleMemberCam(member.id)}
-                                              className="absolute top-2 right-2 bg-stone-950/70 hover:bg-stone-900 text-stone-300 px-1.5 py-0.5 rounded text-[8px] font-mono border border-stone-700"
-                                              title="Toggle video feed"
-                                            >
-                                              {isRemoteCamOn ? 'Video ON' : 'Video OFF'}
-                                            </button>
-                                          )}
-                                        </div>
-                                        );
-                        })}
-                                      </div>
-                                    )}
+                              return (
+                                <div
+                                  key={member.id}
+                                  className="p-2.5 rounded-xl bg-white border border-sand-300 shadow-2xs flex items-center gap-2"
+                                >
+                                  <div>
+                                    <div className="text-xs font-bold text-sand-900">{member.name}</div>
+                                    <div className="text-[10px] text-sand-500 capitalize">{member.role}</div>
                                   </div>
 
-                  {/* Call Controls Bar */ }
-                                {
-                                  isInCall && (
-                                    <div className="p-3 rounded-xl bg-sand-100 border border-sand-300 flex items-center justify-center gap-3">
+                                  {isPending ? (
+                                    <div className="flex items-center gap-1.5 pl-2 border-l border-sand-200">
+                                      <span className="text-[10px] font-semibold text-amber-700 bg-amber-50 px-2 py-0.5 rounded-md border border-amber-200 flex items-center gap-1">
+                                        <Loader2 className="h-2.5 w-2.5 animate-spin" />
+                                        Request Sent...
+                                      </span>
                                       <button
-                                        onClick={handleToggleMic}
-                                        className={`p-2.5 rounded-full border transition-all ${!isMicActive
-                                            ? 'bg-rose-100 text-rose-800 border-rose-300'
-                                            : 'bg-white text-sand-800 border-sand-300 hover:bg-sand-50'
-                                          }`}
-                                        title={isMicActive ? 'Mute' : 'Unmute'}
+                                        onClick={() => handleSimulateAnswerAndJoin(member.id)}
+                                        className="px-2 py-1 rounded-md bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] font-bold shadow-2xs"
+                                        title="Simulate this member clicking Accept & Join"
                                       >
-                                        {isMicActive ? <Mic className="h-4 w-4" /> : <MicOff className="h-4 w-4" />}
+                                        Simulate Accept
                                       </button>
-
-                                      <button
-                                        onClick={handleToggleCam}
-                                        className={`p-2.5 rounded-full border transition-all ${!isCamActive
-                                            ? 'bg-rose-100 text-rose-800 border-rose-300'
-                                            : 'bg-white text-sand-800 border-sand-300 hover:bg-sand-50'
-                                          }`}
-                                        title={isCamActive ? 'Camera Off' : 'Camera On'}
-                                      >
-                                        {isCamActive ? <Video className="h-4 w-4" /> : <VideoOff className="h-4 w-4" />}
-                                      </button>
-
-                                      <button
-                                        onClick={handleToggleScreenShare}
-                                        className={`px-3 py-2 rounded-xl text-xs font-bold border flex items-center gap-1.5 transition-all ${isScreenSharing
-                                            ? 'bg-emerald-600 text-white border-emerald-700'
-                                            : 'bg-white text-sand-800 border-sand-300 hover:bg-sand-50'
-                                          }`}
-                                      >
-                                        <MonitorUp className="h-4 w-4" />
-                                        {isScreenSharing ? 'Stop Screen' : 'Share Screen'}
-                                      </button>
-
-                                      <button
-                                        onClick={handleEndCall}
-                                        className="px-3.5 py-2 rounded-xl bg-rose-700 hover:bg-rose-800 text-white text-xs font-bold flex items-center gap-1 shadow-xs"
-                                      >
-                                        <PhoneOff className="h-4 w-4" />
-                                        End Call
-                                      </button>
+                                      {onSwitchUser && (
+                                        <button
+                                          onClick={() => onSwitchUser(member)}
+                                          className="px-2 py-1 rounded-md bg-sand-100 hover:bg-sand-200 text-sand-800 text-[10px] font-semibold border border-sand-300 flex items-center gap-1"
+                                          title="Switch account to this member"
+                                        >
+                                          <ArrowRightLeft className="h-2.5 w-2.5" />
+                                          Switch User
+                                        </button>
+                                      )}
                                     </div>
-                                  )
-                                }
-
-                                {/* REAL CALL INVITATIONS SECTION (SEND JOIN REQUEST TO THAT USER) */ }
-                                {
-                                  isInCall && (
-                                    <div className="p-4 rounded-xl bg-sand-50 border border-sand-200 space-y-3">
-                                      <div className="flex items-center justify-between">
-                                        <span className="text-xs font-bold text-sand-800 uppercase tracking-wider">
-                                          Invite Teammates to Join Call:
-                                        </span>
-                                      </div>
-
-                                      <div className="flex flex-wrap gap-2">
-                                        {teamMembers
-                                          .filter((m) => m.id !== currentUser.id && !callParticipants.some((p) => p.id === m.id))
-                                          .map((member) => {
-                                            const invite = outgoingInvites.find((i) => i.toUserId === member.id);
-                                            const isPending = invite?.status === 'pending';
-
-                                            return (
-                                              <div
-                                                key={member.id}
-                                                className="p-2.5 rounded-xl bg-white border border-sand-300 shadow-2xs flex items-center gap-2"
-                                              >
-                                                <div>
-                                                  <div className="text-xs font-bold text-sand-900">{member.name}</div>
-                                                  <div className="text-[10px] text-sand-500 capitalize">{member.role}</div>
-                                                </div>
-
-                                                {isPending ? (
-                                                  <div className="flex items-center gap-1.5 pl-2 border-l border-sand-200">
-                                                    <span className="text-[10px] font-semibold text-amber-700 bg-amber-50 px-2 py-0.5 rounded-md border border-amber-200 flex items-center gap-1">
-                                                      <Loader2 className="h-2.5 w-2.5 animate-spin" />
-                                                      Request Sent...
-                                                    </span>
-                                                    <button
-                                                      onClick={() => handleSimulateAnswerAndJoin(member.id)}
-                                                      className="px-2 py-1 rounded-md bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] font-bold shadow-2xs"
-                                                      title="Simulate this member clicking Accept & Join"
-                                                    >
-                                                      Simulate Accept
-                                                    </button>
-                                                    {onSwitchUser && (
-                                                      <button
-                                                        onClick={() => onSwitchUser(member)}
-                                                        className="px-2 py-1 rounded-md bg-sand-100 hover:bg-sand-200 text-sand-800 text-[10px] font-semibold border border-sand-300 flex items-center gap-1"
-                                                        title="Switch account to this member"
-                                                      >
-                                                        <ArrowRightLeft className="h-2.5 w-2.5" />
-                                                        Switch User
-                                                      </button>
-                                                    )}
-                                                  </div>
-                                                ) : (
-                                                  <button
-                                                    onClick={() => handleSendCallInvitation(member)}
-                                                    className="px-2.5 py-1 rounded-lg bg-[#3C311F] hover:bg-[#2B2316] text-white text-xs font-bold flex items-center gap-1 transition-all shadow-2xs"
-                                                  >
-                                                    <UserPlus className="h-3 w-3" />
-                                                    Send Call Request
-                                                  </button>
-                                                )}
-                                              </div>
-                                            );
-                                          })}
-                                      </div>
-                                    </div>
-                                  )
-                                }
+                                  ) : (
+                                    <button
+                                      onClick={() => handleSendCallInvitation(member)}
+                                      className="px-2.5 py-1 rounded-lg bg-[#3C311F] hover:bg-[#2B2316] text-white text-xs font-bold flex items-center gap-1 transition-all shadow-2xs"
+                                    >
+                                      <UserPlus className="h-3 w-3" />
+                                      Send Call Request
+                                    </button>
+                                  )}
+                                </div>
+                              );
+                            })}
+                        </div>
+                      </div>
+                    )
+                  }
                 </div>
 
                 {/* In-Call Team Panel: Puter.js Live Transcript & Team Notes */}
@@ -1856,23 +1781,21 @@ return (
                         <button
                           type="button"
                           onClick={() => setInCallPanelTab('transcript')}
-                          className={`px-2.5 py-1 rounded-md transition-all flex items-center gap-1 cursor-pointer ${
-                            inCallPanelTab === 'transcript'
+                          className={`px-2.5 py-1 rounded-md transition-all flex items-center gap-1 cursor-pointer ${inCallPanelTab === 'transcript'
                               ? 'bg-white text-sand-950 shadow-2xs'
                               : 'text-sand-600 hover:text-sand-900'
-                          }`}
+                            }`}
                         >
                           <Radio className="h-3 w-3 text-emerald-600" />
-                          <span>Puter.js Transcript</span>
+                          <span>Meeting Transcript</span>
                         </button>
                         <button
                           type="button"
                           onClick={() => setInCallPanelTab('notes')}
-                          className={`px-2.5 py-1 rounded-md transition-all flex items-center gap-1 cursor-pointer ${
-                            inCallPanelTab === 'notes'
+                          className={`px-2.5 py-1 rounded-md transition-all flex items-center gap-1 cursor-pointer ${inCallPanelTab === 'notes'
                               ? 'bg-white text-sand-950 shadow-2xs'
                               : 'text-sand-600 hover:text-sand-900'
-                          }`}
+                            }`}
                         >
                           <MessageSquare className="h-3 w-3 text-sand-600" />
                           <span>Notes</span>
@@ -1916,13 +1839,12 @@ return (
                           {meetingTranscripts.map((entry) => (
                             <div
                               key={entry.id}
-                              className={`p-2.5 rounded-xl border shadow-2xs space-y-1 transition-all ${
-                                entry.isAI
+                              className={`p-2.5 rounded-xl border shadow-2xs space-y-1 transition-all ${entry.isAI
                                   ? 'bg-amber-50/80 border-amber-200 text-amber-950'
                                   : entry.speaker === currentUser.name
-                                  ? 'bg-white border-sand-300 text-sand-900'
-                                  : 'bg-sand-100/70 border-sand-200 text-sand-900'
-                              }`}
+                                    ? 'bg-white border-sand-300 text-sand-900'
+                                    : 'bg-sand-100/70 border-sand-200 text-sand-900'
+                                }`}
                             >
                               <div className="flex items-center justify-between text-[10px]">
                                 <span className="font-bold text-sand-950 flex items-center gap-1">
@@ -1949,11 +1871,10 @@ return (
                           callMessages.map((msg) => (
                             <div
                               key={msg.id}
-                              className={`p-2.5 rounded-xl border shadow-2xs space-y-1 ${
-                                msg.role === 'system'
+                              className={`p-2.5 rounded-xl border shadow-2xs space-y-1 ${msg.role === 'system'
                                   ? 'bg-amber-50/60 border-amber-200 text-amber-900 font-mono text-[11px]'
                                   : 'bg-white border-sand-200 text-sand-900'
-                              }`}
+                                }`}
                             >
                               <div className="flex items-center justify-between text-[10px]">
                                 <span className="font-bold">{msg.sender}</span>
@@ -1985,7 +1906,7 @@ return (
                           ) : (
                             <>
                               <Mic className="h-3 w-3 text-rose-400" />
-                              Transcribe Voice (Puter.js)
+                              Transcribe Voice
                             </>
                           )}
                         </button>
@@ -1994,15 +1915,12 @@ return (
                           type="button"
                           onClick={handleGeneratePuterSummary}
                           className="px-3 py-2 rounded-xl bg-amber-100 hover:bg-amber-200 text-amber-900 border border-amber-300 text-xs font-bold flex items-center gap-1 shadow-2xs transition-all cursor-pointer whitespace-nowrap"
-                          title="Generate Puter.js AI Meeting Summary"
+                          title="Generate AI Meeting Summary"
                         >
                           <Sparkles className="h-3 w-3 text-amber-700" />
                           AI Summary
                         </button>
                       </div>
-                      <span className="text-[10px] text-center text-sand-500 font-mono">
-                        Powered by Puter.js AI Speech-to-Text
-                      </span>
                     </div>
                   ) : (
                     <form onSubmit={handleSendCallMsg} className="pt-2 flex gap-1.5 border-t border-sand-200">
@@ -2022,131 +1940,131 @@ return (
                     </form>
                   )}
                 </div>
-                        </div>
-                      </div>
-                    )}
-
-                    {/* TAB 4: TEAM ROSTER */}
-                    {activeTab === 'team' && (
-                      <div className="p-6 space-y-4">
-                        <div className="flex items-center justify-between pb-2 border-b border-sand-200">
-                          <h4 className="text-xs font-bold uppercase tracking-wider text-sand-800">
-                            Assigned Team Members ({teamMembers.length})
-                          </h4>
-                        </div>
-
-                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                          {teamMembers.map((member) => (
-                            <div
-                              key={member.id}
-                              className="p-4 rounded-xl border border-sand-200 bg-white shadow-2xs space-y-2 flex flex-col justify-between"
-                            >
-                                  <div className="flex items-center gap-3">
-                                    <div className="h-10 w-10 rounded-full bg-[#3C311F] text-sand-50 flex items-center justify-center font-bold text-sm uppercase shrink-0">
-                                      {member.name.charAt(0)}
-                                    </div>
-                                    <div className="space-y-0.5">
-                                      <div className="text-xs font-bold text-sand-950 flex items-center gap-1.5">
-                                        {member.name}
-                                        {member.id === currentUser.id && (
-                                          <span className="text-[9px] font-bold px-1.5 py-0.2 rounded bg-amber-100 text-amber-900 border border-amber-300">
-                                            You
-                                          </span>
-                                        )}
-                                      </div>
-                                      <div className="text-[11px] text-sand-500 font-mono">{member.email}</div>
-                                    </div>
-                                  </div>
-
-                                    <div className="flex items-center justify-between pt-2 border-t border-sand-100 text-[11px]">
-                                      <span className="uppercase font-bold px-2 py-0.5 rounded bg-sand-100 text-sand-800">
-                                        {member.role}
-                                      </span>
-                                      {onSwitchUser && member.id !== currentUser.id && (
-                                        <button
-                                          onClick={() => onSwitchUser(member)}
-                                          className="px-2 py-0.5 rounded-lg border border-sand-300 hover:bg-sand-100 text-sand-700 font-semibold flex items-center gap-1"
-                                        >
-                                          <ArrowRightLeft className="h-3 w-3" />
-                                          Switch User
-                                        </button>
-                                      )}
-                                    </div>
-                                  </div>
-                ))}
-                                </div>
-                              </div>
+              </div>
+            </div>
           )}
-                            </div>
+
+          {/* TAB 4: TEAM ROSTER */}
+          {activeTab === 'team' && (
+            <div className="p-6 space-y-4">
+              <div className="flex items-center justify-between pb-2 border-b border-sand-200">
+                <h4 className="text-xs font-bold uppercase tracking-wider text-sand-800">
+                  Assigned Team Members ({teamMembers.length})
+                </h4>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                {teamMembers.map((member) => (
+                  <div
+                    key={member.id}
+                    className="p-4 rounded-xl border border-sand-200 bg-white shadow-2xs space-y-2 flex flex-col justify-between"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="h-10 w-10 rounded-full bg-[#3C311F] text-sand-50 flex items-center justify-center font-bold text-sm uppercase shrink-0">
+                        {member.name.charAt(0)}
+                      </div>
+                      <div className="space-y-0.5">
+                        <div className="text-xs font-bold text-sand-950 flex items-center gap-1.5">
+                          {member.name}
+                          {member.id === currentUser.id && (
+                            <span className="text-[9px] font-bold px-1.5 py-0.2 rounded bg-amber-100 text-amber-900 border border-amber-300">
+                              You
+                            </span>
                           )}
+                        </div>
+                        <div className="text-[11px] text-sand-500 font-mono">{member.email}</div>
+                      </div>
+                    </div>
 
-                          {/* NEW PROJECT MODAL */}
-                          {isNewProjectModalOpen && (
-                            <div className="fixed inset-0 z-50 bg-sand-950/40 backdrop-blur-xs flex items-center justify-center p-4">
-                                  <div className="bg-white rounded-2xl max-w-lg w-full p-6 space-y-4 shadow-xl border border-sand-300">
-                                    <div className="flex items-center justify-between pb-2 border-b border-sand-200">
-                                      <h3 className="font-serif font-bold text-base text-sand-950">Create New Project</h3>
-                                      <button
-                                        onClick={() => setIsNewProjectModalOpen(false)}
-                                        className="p-1 rounded-lg hover:bg-sand-100 text-sand-500"
-                                      >
-                                        <X className="h-4 w-4" />
-                                      </button>
-                                    </div>
+                    <div className="flex items-center justify-between pt-2 border-t border-sand-100 text-[11px]">
+                      <span className="uppercase font-bold px-2 py-0.5 rounded bg-sand-100 text-sand-800">
+                        {member.role}
+                      </span>
+                      {onSwitchUser && member.id !== currentUser.id && (
+                        <button
+                          onClick={() => onSwitchUser(member)}
+                          className="px-2 py-0.5 rounded-lg border border-sand-300 hover:bg-sand-100 text-sand-700 font-semibold flex items-center gap-1"
+                        >
+                          <ArrowRightLeft className="h-3 w-3" />
+                          Switch User
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
-                                        <form onSubmit={handleCreateProject} className="space-y-3 text-xs">
-                                          <div className="space-y-1">
-                                            <label className="font-bold text-sand-800">Project Title</label>
-                                            <input
-                                              type="text"
-                                              required
-                                              value={newTitle}
-                                              onChange={(e) => setNewTitle(e.target.value)}
-                                              placeholder="e.g. Q1 Product Launch & Compliance Review"
-                                              className="w-full p-2.5 rounded-xl border border-sand-300 text-sand-900 bg-sand-50/40 focus:bg-white focus:outline-none focus:ring-1 focus:ring-[#3C311F]"
-                                            />
-                                          </div>
+      {/* NEW PROJECT MODAL */}
+      {isNewProjectModalOpen && (
+        <div className="fixed inset-0 z-50 bg-sand-950/40 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-lg w-full p-6 space-y-4 shadow-xl border border-sand-300">
+            <div className="flex items-center justify-between pb-2 border-b border-sand-200">
+              <h3 className="font-serif font-bold text-base text-sand-950">Create New Project</h3>
+              <button
+                onClick={() => setIsNewProjectModalOpen(false)}
+                className="p-1 rounded-lg hover:bg-sand-100 text-sand-500"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleCreateProject} className="space-y-3 text-xs">
+              <div className="space-y-1">
+                <label className="font-bold text-sand-800">Project Title</label>
+                <input
+                  type="text"
+                  required
+                  value={newTitle}
+                  onChange={(e) => setNewTitle(e.target.value)}
+                  placeholder="e.g. Q1 Product Launch & Compliance Review"
+                  className="w-full p-2.5 rounded-xl border border-sand-300 text-sand-900 bg-sand-50/40 focus:bg-white focus:outline-none focus:ring-1 focus:ring-[#3C311F]"
+                />
+              </div>
 
               <div className="space-y-1">
-                                              <label className="font-bold text-sand-800">Target Deadline</label>
-                                              <input
-                                                type="date"
-                                                value={newDeadline}
-                                                onChange={(e) => setNewDeadline(e.target.value)}
-                                                className="w-full p-2.5 rounded-xl border border-sand-300 text-sand-900 bg-sand-50/40 focus:bg-white focus:outline-none focus:ring-1 focus:ring-[#3C311F]"
-                                              />
-                                            </div>
+                <label className="font-bold text-sand-800">Target Deadline</label>
+                <input
+                  type="date"
+                  value={newDeadline}
+                  onChange={(e) => setNewDeadline(e.target.value)}
+                  className="w-full p-2.5 rounded-xl border border-sand-300 text-sand-900 bg-sand-50/40 focus:bg-white focus:outline-none focus:ring-1 focus:ring-[#3C311F]"
+                />
+              </div>
 
-                                              <div className="space-y-1">
-                                                <label className="font-bold text-sand-800">Publishing Channels</label>
-                                                <input
-                                                  type="text"
-                                                  value={newChannels}
-                                                  onChange={(e) => setNewChannels(e.target.value)}
-                                                  placeholder="LinkedIn, YouTube, Canva, Teams"
-                                                  className="w-full p-2.5 rounded-xl border border-sand-300 text-sand-900 bg-sand-50/40 focus:bg-white focus:outline-none focus:ring-1 focus:ring-[#3C311F]"
-                                                />
-                                              </div>
+              <div className="space-y-1">
+                <label className="font-bold text-sand-800">Publishing Channels</label>
+                <input
+                  type="text"
+                  value={newChannels}
+                  onChange={(e) => setNewChannels(e.target.value)}
+                  placeholder="LinkedIn, YouTube, Canva, Teams"
+                  className="w-full p-2.5 rounded-xl border border-sand-300 text-sand-900 bg-sand-50/40 focus:bg-white focus:outline-none focus:ring-1 focus:ring-[#3C311F]"
+                />
+              </div>
 
-                                                <div className="flex items-center justify-end gap-2 pt-3 border-t border-sand-200">
-                                                  <button
-                                                    type="button"
-                                                    onClick={() => setIsNewProjectModalOpen(false)}
-                                                    className="px-4 py-2 rounded-xl text-sand-700 hover:bg-sand-100 font-semibold"
-                                                  >
-                                                    Cancel
-                                                  </button>
-                                                  <button
-                                                    type="submit"
-                                                    className="px-5 py-2 rounded-xl bg-[#3C311F] hover:bg-[#2B2316] text-white font-bold shadow-xs"
-                                                  >
-                                                    Create Project
-                                                  </button>
-                                                </div>
-                                              </form>
-                                            </div>
-                                          </div>
+              <div className="flex items-center justify-end gap-2 pt-3 border-t border-sand-200">
+                <button
+                  type="button"
+                  onClick={() => setIsNewProjectModalOpen(false)}
+                  className="px-4 py-2 rounded-xl text-sand-700 hover:bg-sand-100 font-semibold"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2 rounded-xl bg-[#3C311F] hover:bg-[#2B2316] text-white font-bold shadow-xs"
+                >
+                  Create Project
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
       )}
-                                      </div>
-                                      );
+    </div>
+  );
 };

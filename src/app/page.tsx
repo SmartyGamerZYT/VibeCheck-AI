@@ -179,6 +179,18 @@ export default function Home() {
     } catch (e) {}
   };
 
+  const handleResetPassword = (email: string, newPass: string): boolean => {
+    const user = accounts.find((a) => a.email.toLowerCase() === email.trim().toLowerCase());
+    if (!user) return false;
+    const updatedUser = { ...user, password: newPass };
+    const updatedAccounts = accounts.map((a) => (a.id === user.id ? updatedUser : a));
+    setAccounts(updatedAccounts);
+    try {
+      localStorage.setItem('vibecheck_accounts', JSON.stringify(updatedAccounts));
+    } catch (e) {}
+    return true;
+  };
+
   // Find active organization for the logged in user
   const currentOrg = currentUser
     ? organizations.find((o) => o.id === currentUser.orgId) || {
@@ -311,6 +323,7 @@ export default function Home() {
           accounts={accounts}
           onLogin={handleLogin}
           onRegister={handleRegister}
+          onResetPassword={handleResetPassword}
           onBackToLanding={() => setViewMode('landing')}
           onOpenLegal={handleOpenLegal}
         />
