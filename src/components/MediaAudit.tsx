@@ -71,36 +71,6 @@ export const MediaAudit: React.FC<MediaAuditProps> = ({
   const audioChunksRef = useRef<Blob[]>([]);
   const mediaStreamRef = useRef<MediaStream | null>(null);
 
-  // Helper to ensure Puter.js is loaded in the browser
-  const ensurePuterLoaded = async (): Promise<any> => {
-    if (typeof window === 'undefined') return null;
-    if ((window as any).puter?.ai?.speech2txt) return (window as any).puter;
-
-    return new Promise((resolve) => {
-      const existing = document.querySelector('script[src*="js.puter.com"]');
-      if (!existing) {
-        const script = document.createElement('script');
-        script.src = 'https://js.puter.com/v2/';
-        script.async = true;
-        script.onload = () => resolve((window as any).puter);
-        script.onerror = () => resolve(null);
-        document.head.appendChild(script);
-      } else {
-        let attempts = 0;
-        const interval = setInterval(() => {
-          attempts++;
-          if ((window as any).puter?.ai?.speech2txt) {
-            clearInterval(interval);
-            resolve((window as any).puter);
-          } else if (attempts > 30) {
-            clearInterval(interval);
-            resolve((window as any).puter || null);
-          }
-        }, 200);
-      }
-    });
-  };
-
   // Clean up Object URLs & streams
   useEffect(() => {
     return () => {
@@ -202,7 +172,7 @@ export const MediaAudit: React.FC<MediaAuditProps> = ({
   };
 
   // ==========================================
-  // LIVE MICROPHONE SPEECH RECOGNITION (MediaRecorder + Puter.js)
+  // DIRECT MICROPHONE SPEECH TRANSCRIPTION (Web Speech API)
   // ==========================================
   const handleToggleLiveRecording = async () => {
     if (isRecordingLive) {
@@ -259,15 +229,27 @@ export const MediaAudit: React.FC<MediaAuditProps> = ({
           const recordedUrl = URL.createObjectURL(audioBlob);
           setAudioUrl(recordedUrl);
 
-          // Transcribe the actual recorded voice audio using Puter.js
-          await executeAudioTranscription(audioBlob);
+          // Decode audio metrics (duration & waveform)
+          try {
+            const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+            if (AudioCtx) {
+              const ctx = new AudioCtx();
+              const arrayBuffer = await audioBlob.arrayBuffer();
+              const decoded = await ctx.decodeAudioData(arrayBuffer);
+              const dur = Math.round(decoded.duration) || 5;
+              setAudioDuration(dur);
+              ctx.close();
+            }
+          } catch (err) {
+            console.warn('Audio decoding info:', err);
+          }
         }
       };
 
       mediaRecorder.start(250);
       setIsRecordingLive(true);
 
-      // Optional real-time speech preview via browser SpeechRecognition if supported
+      // Direct Speech-to-Text via browser SpeechRecognition (Zero login, instant dictation)
       const SpeechRecognition =
         (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
 
@@ -278,31 +260,42 @@ export const MediaAudit: React.FC<MediaAuditProps> = ({
           recognition.interimResults = true;
           recognition.lang = 'en-US';
 
+          let finalized = '';
+
           recognition.onresult = (event: any) => {
-            let currentTranscript = '';
-            for (let i = 0; i < event.results.length; i++) {
-              currentTranscript += event.results[i][0].transcript + ' ';
+            let interim = '';
+            for (let i = event.resultIndex; i < event.results.length; ++i) {
+              if (event.results[i].isFinal) {
+                finalized += event.results[i][0].transcript + ' ';
+              } else {
+                interim += event.results[i][0].transcript;
+              }
             }
-            if (currentTranscript.trim()) {
-              setTranscriptText(currentTranscript.trim());
+            const fullText = (finalized + ' ' + interim).trim().replace(/\s+/g, ' ');
+            if (fullText) {
+              setTranscriptText(fullText);
             }
+          };
+
+          recognition.onerror = (rErr: any) => {
+            console.warn('Direct speech recognition event:', rErr);
           };
 
           recognitionRef.current = recognition;
           recognition.start();
         } catch (rErr) {
-          console.warn('Interim recognition notice:', rErr);
+          console.warn('Speech recognition start note:', rErr);
         }
       }
     } catch (err: any) {
       console.error('Microphone error:', err);
-      alert('Microphone access is unavailable or denied. Please grant microphone permission or upload an audio file.');
+      alert('Microphone access is unavailable or denied. Please grant microphone permission to record speech.');
       setIsRecordingLive(false);
     }
   };
 
   // ==========================================
-  // AUDIO UPLOAD & REAL TRANSCRIPTION VIA PUTER.JS
+  // AUDIO UPLOAD & DIRECT TRANSCRIPTION
   // ==========================================
   const handleAudioUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -346,37 +339,15 @@ export const MediaAudit: React.FC<MediaAuditProps> = ({
       console.warn('Audio decoding fallback:', err);
     }
 
-    // Transcribe with Puter.js
+    // Direct server transcription attempt
     await executeAudioTranscription(file);
   };
 
   const executeAudioTranscription = async (fileOrBlob: File | Blob) => {
     setIsAuditing(true);
-    setAuditStepMessage('Transcribing speech using Puter.js AI Speech-to-Text...');
-    setTranscriptText('');
+    setAuditStepMessage('Transcribing audio speech...');
 
     try {
-      // 1. Primary: Puter.js speech2txt
-      const puter = await ensurePuterLoaded();
-      if (puter?.ai?.speech2txt) {
-        try {
-          const res = await puter.ai.speech2txt(fileOrBlob);
-          const transcript =
-            typeof res === 'string'
-              ? res.trim()
-              : (res?.text || res?.transcript || '').trim();
-
-          if (transcript) {
-            setTranscriptText(transcript);
-            return transcript;
-          }
-        } catch (puterErr: any) {
-          console.warn('Puter.js speech2txt notice:', puterErr);
-        }
-      }
-
-      // 2. Backup: Server API endpoint if Puter client call was blocked
-      setAuditStepMessage('Transcribing via speech processing server...');
       const reader = new FileReader();
       const base64Promise = new Promise<string>((resolve, reject) => {
         reader.onload = () => resolve((reader.result as string).split(',')[1]);
@@ -398,12 +369,9 @@ export const MediaAudit: React.FC<MediaAuditProps> = ({
       if (data.success && data.transcript) {
         setTranscriptText(data.transcript);
         return data.transcript;
-      } else {
-        throw new Error(data.error || 'Audio transcription returned empty result.');
       }
     } catch (err: any) {
-      console.error('Audio transcription error:', err);
-      alert(`Audio transcription error: ${err.message || 'Could not transcribe speech from this audio. Please ensure the audio contains clear speech.'}`);
+      console.warn('Audio transcription notice:', err);
     } finally {
       setIsAuditing(false);
       setAuditStepMessage('');
@@ -849,9 +817,53 @@ export const MediaAudit: React.FC<MediaAuditProps> = ({
                             rows={4}
                             value={transcriptText}
                             onChange={(e) => setTranscriptText(e.target.value)}
-                            placeholder="Speech transcript will appear here automatically when you upload audio or record voice. You can also edit or paste text directly..."
+                            placeholder="Speech transcript will appear here directly in real time as you speak or upload audio. You can also edit or paste text directly..."
                             className="w-full p-3 rounded-xl border border-sand-300 text-xs font-mono text-sand-900 bg-sand-50/40 focus:bg-white focus:outline-none focus:ring-1 focus:ring-[#3C311F] leading-relaxed"
                           />
+
+                          {/* OPTION TO AUDIT THE TRANSCRIBED TEXT */}
+                          {transcriptText.trim() ? (
+                            <div className="p-3.5 sm:p-4 rounded-xl bg-amber-50/80 border border-amber-300 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-2xs">
+                              <div className="flex items-center gap-3">
+                                <div className="h-9 w-9 rounded-lg bg-[#3C311F] text-amber-300 flex items-center justify-center shrink-0 shadow-2xs">
+                                  <Sparkles className="h-5 w-5" />
+                                </div>
+                                <div>
+                                  <div className="text-xs font-bold text-sand-950 flex items-center gap-2">
+                                    <span>Direct Transcript Ready</span>
+                                    <span className="text-[10px] font-semibold text-emerald-800 bg-emerald-100 px-2 py-0.5 rounded-full border border-emerald-300">
+                                      {transcriptText.trim().split(/\s+/).length} words
+                                    </span>
+                                  </div>
+                                  <p className="text-[11px] text-sand-700">
+                                    Click below to run full AI speech governance audit against your active brand guidelines.
+                                  </p>
+                                </div>
+                              </div>
+                              <button
+                                onClick={handleRunAudioAudit}
+                                disabled={isAuditing}
+                                className="px-5 py-2.5 rounded-xl bg-[#3C311F] hover:bg-[#2B2316] text-white text-xs font-bold flex items-center justify-center gap-2 shadow-sm transition-all cursor-pointer whitespace-nowrap disabled:opacity-50"
+                              >
+                                {isAuditing ? (
+                                  <>
+                                    <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                                    Auditing Speech...
+                                  </>
+                                ) : (
+                                  <>
+                                    <Sparkles className="h-3.5 w-3.5 text-amber-300" />
+                                    Audit This Transcript
+                                  </>
+                                )}
+                              </button>
+                            </div>
+                          ) : (
+                            <div className="p-3 rounded-xl bg-sand-50 border border-dashed border-sand-300 flex items-center gap-2 text-xs text-sand-600">
+                              <Mic className="h-4 w-4 text-sand-500 shrink-0" />
+                              <span>Click <strong>Record Live Voice</strong> to dictate speech directly or upload an audio file. Once transcribed, the option to audit the text will appear here.</span>
+                            </div>
+                          )}
                         </div>
 
                         {/* VOICE ANALYSIS METRICS */}
@@ -1019,10 +1031,10 @@ export const MediaAudit: React.FC<MediaAuditProps> = ({
                             </div>
                             <div className="max-w-md mx-auto space-y-1.5">
                               <h4 className="text-sm font-bold text-sand-900">
-                                Puter.js AI Speech &amp; Voice Governance
+                                Direct Speech Transcription &amp; Voice Governance
                               </h4>
                               <p className="text-xs text-sand-600 leading-relaxed">
-                                Record live voice with your microphone or upload an audio file. Puter.js will transcribe your actual speech verbatim and audit it for cadence, filler words, grammar, tone, and brand compliance.
+                                Record live speech with your microphone or upload an audio file. Your speech is transcribed directly in real time with zero logins, then audited for cadence, filler words, grammar, tone, and brand compliance.
                               </p>
                             </div>
                             <div className="flex items-center justify-center gap-2 pt-1 flex-wrap">

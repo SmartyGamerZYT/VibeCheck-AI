@@ -94,11 +94,11 @@ export async function POST(req: Request) {
       }
     }
 
-    // If external key not configured or failed, inform client to use puter.js client-side transcription
+    // If external key not configured or failed, inform client
     return NextResponse.json(
       {
         success: false,
-        error: lastError || 'Server-side key unavailable. Puter.js will transcribe on client.',
+        error: lastError || 'Server-side speech recognition model unavailable. Use direct microphone transcription on client.',
       },
       { status: 400 }
     );
