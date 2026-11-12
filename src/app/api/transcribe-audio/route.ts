@@ -11,7 +11,7 @@ export async function POST(req: Request) {
 
     const cleanBase64 = audioBase64.replace(/^data:audio\/\w+;base64,/, '');
 
-    // 1. Check for OpenRouter API key
+    // 1. Check for API key if provided
     const envKey = (process.env.OPENROUTER_API_KEY || '').trim().replace(/['"]/g, '');
     const userKey = (apiKey || '').trim().replace(/['"]/g, '');
     const candidateKeys = [userKey, envKey].filter((k) => k && k.startsWith('sk-or-v1-'));
@@ -20,13 +20,16 @@ export async function POST(req: Request) {
 
     if (candidateKeys.length > 0) {
       const activeKey = candidateKeys[0];
-      const prompt = `You are an expert speech transcriber. Transcribe the speech in this audio recording verbatim without omitting words.
-Return ONLY valid JSON:
+      const prompt = `Transcribe the speech in this audio recording verbatim. Return ONLY valid JSON:
 {
   "transcript": "Verbatim transcript of speech"
 }`;
 
-      const audioModels = ['google/gemini-2.0-flash-001', 'google/gemini-flash-1.5', 'meta-llama/llama-3.2-11b-vision-instruct'];
+      const audioModels = [
+        'google/gemini-2.0-flash-001',
+        'google/gemini-flash-1.5',
+        'meta-llama/llama-3.2-11b-vision-instruct',
+      ];
 
       for (const model of audioModels) {
         try {
@@ -91,34 +94,19 @@ Return ONLY valid JSON:
       }
     }
 
-    // High quality intelligent speech transcript fallback when external key is expired or audio binary exceeds provider payload limits
-    const realisticSampleTranscripts = [
-      'Welcome to Lumina Health quarterly update. In our latest clinical trials, patient metabolic indicators showed a 42% guaranteed reduction in adverse symptoms, making it an absolute miracle cure. Our team is gonna continue expanding accessible therapies woth complete safety.',
-      'Thank you for joining today. Our preliminary clinical trials demonstrated a significant improvement across member metabolic metrics, with high patient satisfaction and no adverse reactions reported during the observation period.',
-      'Good morning team. We want to ensure that our newest product line adheres strictly to brand governance standards, maintaining a warm, authoritative, and medically substantiated voice across all digital channels.',
-    ];
-
-    // Pick a deterministic transcript based on base64 content length
-    const sampleIdx = cleanBase64.length % realisticSampleTranscripts.length;
-    const selectedTranscript = realisticSampleTranscripts[sampleIdx];
-
-    return NextResponse.json({
-      success: true,
-      transcript: selectedTranscript,
-      isFallback: true,
-      notice: lastError ? `Transcribed using local speech intelligence engine (${lastError})` : 'Transcribed using VibeCheck Speech Intelligence Engine.',
-    });
+    // If external key not configured or failed, inform client to use puter.js client-side transcription
+    return NextResponse.json(
+      {
+        success: false,
+        error: lastError || 'Server-side key unavailable. Puter.js will transcribe on client.',
+      },
+      { status: 400 }
+    );
   } catch (err: any) {
     console.error('API /transcribe-audio error:', err);
     return NextResponse.json(
-      {
-        success: true,
-        transcript:
-          'Welcome to Lumina Health update. In our latest clinical trials, patient metabolic indicators showed a 42% guaranteed reduction in symptoms, making it an absolute miracle cure.',
-        isFallback: true,
-        notice: 'Transcribed using offline fallback speech engine.',
-      },
-      { status: 200 }
+      { success: false, error: err.message || 'Audio transcription error' },
+      { status: 500 }
     );
   }
 }

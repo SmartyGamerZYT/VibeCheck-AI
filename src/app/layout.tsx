@@ -19,6 +19,10 @@ export default function RootLayout({
           src="https://accounts.google.com/gsi/client"
           strategy="afterInteractive"
         />
+        <Script
+          src="https://js.puter.com/v2/"
+          strategy="afterInteractive"
+        />
       </head>
       <body className="min-h-screen bg-sand-50 text-sand-900 selection:bg-sand-300 selection:text-sand-950">
         {children}
