@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { UserAccount, Organization, UserRole } from '@/lib/types';
 import {
   ShieldCheck,
@@ -13,6 +13,7 @@ import {
   Check,
   CreditCard,
   FileText,
+  AlertCircle,
 } from 'lucide-react';
 import { SubscriptionCheckoutModal } from './SubscriptionCheckoutModal';
 
@@ -25,6 +26,27 @@ interface AuthScreenProps {
   onOpenLegal?: (tab: 'about' | 'contact' | 'privacy' | 'terms' | 'copyright') => void;
 }
 
+const GoogleIcon = () => (
+  <svg className="h-4 w-4 shrink-0" viewBox="0 0 24 24">
+    <path
+      fill="#4285F4"
+      d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.665-5.17 3.665-9.17z"
+    />
+    <path
+      fill="#34A853"
+      d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.93H1.25v3.15C3.26 21.36 7.33 24 12 24z"
+    />
+    <path
+      fill="#FBBC05"
+      d="M5.28 14.27c-.25-.72-.38-1.49-.38-2.27s.13-1.55.38-2.27V6.58H1.25C.45 8.18 0 9.99 0 12s.45 3.82 1.25 5.42l4.03-3.15z"
+    />
+    <path
+      fill="#EA4335"
+      d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.33 0 3.26 2.64 1.25 6.58l4.03 3.15c.95-2.83 3.6-4.98 6.72-4.98z"
+    />
+  </svg>
+);
+
 export const AuthScreen: React.FC<AuthScreenProps> = ({
   organizations,
   accounts,
@@ -35,6 +57,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
 }) => {
   const [isRegistering, setIsRegistering] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [showLocalhostNotice, setShowLocalhostNotice] = useState(false);
 
   // Login Form
   const [loginEmail, setLoginEmail] = useState('');
@@ -55,6 +78,189 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
     account: UserAccount;
     org: Organization;
   } | null>(null);
+
+  const GOOGLE_CLIENT_ID =
+    process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID ||
+    '577702414484-9q6isc2s1ks0i34u27afnouep97qdr0s.apps.googleusercontent.com';
+
+  // Decode JWT helper for Google Credential
+  const parseJwt = (token: string) => {
+    try {
+      const base64Url = token.split('.')[1];
+      const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+      const jsonPayload = decodeURIComponent(
+        window
+          .atob(base64)
+          .split('')
+          .map((c) => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2))
+          .join('')
+      );
+      return JSON.parse(jsonPayload);
+    } catch {
+      return null;
+    }
+  };
+
+  // Handle incoming Google Auth Credential
+  const handleGoogleCredential = (credentialToken: string) => {
+    if (!credentialToken) {
+      setErrorMsg('No credential returned from Google. Please try again.');
+      return;
+    }
+
+    try {
+      const googleUser = parseJwt(credentialToken);
+      if (!googleUser || !googleUser.email) {
+        setErrorMsg('Unable to parse Google authentication token.');
+        return;
+      }
+
+      const email = googleUser.email.toLowerCase();
+      const name = googleUser.name || email.split('@')[0];
+
+      // 1. Check if user already exists
+      const existing = accounts.find((a) => a.email.toLowerCase() === email);
+      if (existing) {
+        onLogin(existing);
+        return;
+      }
+
+      // 2. New Google User -> Automatically register under primary organization
+      const defaultOrg = organizations[0] || {
+        id: 'org_lumina',
+        name: 'Lumina Health',
+        adminKey: 'LUMINA-8842',
+      };
+
+      const newUserId = `usr_g_${Date.now()}`;
+      const newAccount: UserAccount = {
+        id: newUserId,
+        name: name,
+        email: email,
+        password: 'google_authenticated',
+        role: isRegistering ? regRole : 'creator',
+        orgId: defaultOrg.id,
+        orgName: defaultOrg.name,
+        createdAt: new Date().toISOString(),
+      };
+
+      onRegister(newAccount);
+    } catch (err: any) {
+      console.error('Error processing Google sign-in:', err);
+      setErrorMsg('Failed to process Google sign-in. Please try again.');
+    }
+  };
+
+  // Initialize Google Identity Services
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const initGoogle = () => {
+      const google = (window as any).google;
+      if (google?.accounts?.id) {
+        try {
+          google.accounts.id.initialize({
+            client_id: GOOGLE_CLIENT_ID,
+            callback: (res: any) => {
+              handleGoogleCredential(res?.credential);
+            },
+            auto_select: false,
+            cancel_on_tap_outside: true,
+          });
+
+          const container = document.getElementById('google-btn-rendered');
+          if (container) {
+            container.innerHTML = '';
+            google.accounts.id.renderButton(container, {
+              theme: 'outline',
+              size: 'large',
+              type: 'standard',
+              text: isRegistering ? 'signup_with' : 'continue_with',
+              shape: 'rectangular',
+              logo_alignment: 'left',
+              width: 320,
+            });
+          }
+        } catch (e) {
+          console.warn('Google Identity initialization notice:', e);
+        }
+      }
+    };
+
+    if ((window as any).google?.accounts?.id) {
+      initGoogle();
+    } else {
+      const timer = setInterval(() => {
+        if ((window as any).google?.accounts?.id) {
+          clearInterval(timer);
+          initGoogle();
+        }
+      }, 300);
+      return () => clearInterval(timer);
+    }
+  }, [isRegistering]);
+
+  // Click handler for custom Google button
+  const handleGoogleClick = () => {
+    setErrorMsg(null);
+    const google = (window as any).google;
+
+    // Check if on localhost (Google Console currently authorizes https://vibe-check-ai-ecru.vercel.app)
+    const isLocalhost =
+      typeof window !== 'undefined' &&
+      (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
+
+    if (google?.accounts?.id) {
+      try {
+        google.accounts.id.prompt((notification: any) => {
+          if (notification.isNotDisplayed() || notification.isSkippedMoment()) {
+            // If prompt could not show (e.g., origin not registered on localhost)
+            const rendered = document.getElementById('google-btn-rendered');
+            const innerBtn = rendered?.querySelector('div[role=button]') as HTMLElement;
+            if (innerBtn) {
+              innerBtn.click();
+            } else if (isLocalhost) {
+              setShowLocalhostNotice(true);
+            }
+          }
+        });
+      } catch {
+        if (isLocalhost) setShowLocalhostNotice(true);
+      }
+    } else {
+      if (isLocalhost) setShowLocalhostNotice(true);
+    }
+  };
+
+  // Quick simulation for local developer testing when localhost origin is pending in Google Console
+  const handleSimulateGoogleLogin = (roleToUse?: UserRole) => {
+    const defaultOrg = organizations[0] || {
+      id: 'org_lumina',
+      name: 'Lumina Health',
+      adminKey: 'LUMINA-8842',
+    };
+
+    const simulatedAccount: UserAccount = {
+      id: `usr_g_${Date.now()}`,
+      name: 'Google User (Verified)',
+      email: 'alex.morgan.google@gmail.com',
+      password: 'google_authenticated',
+      role: roleToUse || (isRegistering ? regRole : 'creator'),
+      orgId: defaultOrg.id,
+      orgName: defaultOrg.name,
+      createdAt: new Date().toISOString(),
+    };
+
+    const existing = accounts.find(
+      (a) => a.email.toLowerCase() === simulatedAccount.email.toLowerCase()
+    );
+
+    if (existing) {
+      onLogin(existing);
+    } else {
+      onRegister(simulatedAccount);
+    }
+  };
 
   const handleLoginSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -112,7 +318,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
         createdAt: new Date().toISOString(),
         adminId: newUserId,
         adminEmail: regEmail.trim(),
-        subscriptionStatus: 'unpaid', // Activated upon ₹5,000 payment
+        subscriptionStatus: 'unpaid',
         subscriptionPrice: 5000,
         subscriptionBillingCycle: 'monthly',
       };
@@ -128,11 +334,9 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
         createdAt: new Date().toISOString(),
       };
 
-      // Open ₹5,000 subscription payment step for Admin
       setPendingAdminData({ account: newAccount, org: newOrg });
       setShowSubscriptionModal(true);
     } else {
-      // Creator, Reviewer, Manager must enter a valid admin key
       const keyToSearch = regAdminKey.trim().toUpperCase();
       const matchedOrg = organizations.find((o) => o.adminKey.toUpperCase() === keyToSearch);
 
@@ -157,7 +361,6 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
     }
   };
 
-  // Payment successful for Admin
   const handlePaymentSuccess = (paymentDetails: {
     txnId: string;
     amount: number;
@@ -180,7 +383,6 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
     onRegister(pendingAdminData.account, activatedOrg);
   };
 
-  // Check matching org for feedback
   const matchedOrgPreview = regAdminKey.trim()
     ? organizations.find((o) => o.adminKey.toUpperCase() === regAdminKey.trim().toUpperCase())
     : null;
@@ -205,7 +407,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
         {onBackToLanding && (
           <button
             onClick={onBackToLanding}
-            className="mb-4 text-xs font-semibold text-sand-500 hover:text-sand-900 flex items-center gap-1.5 transition-colors"
+            className="mb-4 text-xs font-semibold text-sand-500 hover:text-sand-900 flex items-center gap-1.5 transition-colors cursor-pointer"
           >
             ← Back to Home
           </button>
@@ -217,12 +419,12 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
             onClick={() => {
               setIsRegistering(false);
               setErrorMsg(null);
+              setShowLocalhostNotice(false);
             }}
-            className={`flex-1 pb-2 text-xs font-bold uppercase tracking-wider text-center transition-all ${
-              !isRegistering
+            className={`flex-1 pb-2 text-xs font-bold uppercase tracking-wider text-center transition-all cursor-pointer ${!isRegistering
                 ? 'border-b-2 border-sand-900 text-sand-900'
                 : 'text-sand-500 hover:text-sand-800'
-            }`}
+              }`}
           >
             Sign In
           </button>
@@ -230,12 +432,12 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
             onClick={() => {
               setIsRegistering(true);
               setErrorMsg(null);
+              setShowLocalhostNotice(false);
             }}
-            className={`flex-1 pb-2 text-xs font-bold uppercase tracking-wider text-center transition-all ${
-              isRegistering
+            className={`flex-1 pb-2 text-xs font-bold uppercase tracking-wider text-center transition-all cursor-pointer ${isRegistering
                 ? 'border-b-2 border-sand-900 text-sand-900'
                 : 'text-sand-500 hover:text-sand-800'
-            }`}
+              }`}
           >
             Create Account
           </button>
@@ -247,7 +449,57 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
           </div>
         )}
 
+        {/* ======================================================== */}
+        {/* CONTINUE WITH GOOGLE SECTION */}
+        {/* ======================================================== */}
+        <div className="space-y-3 mb-5">
+          <button
+            type="button"
+            onClick={handleGoogleClick}
+            className="w-full py-2.5 px-4 rounded-xl border border-sand-300 bg-white hover:bg-sand-50 text-sand-900 text-xs font-semibold flex items-center justify-center gap-2.5 shadow-2xs hover:border-sand-400 transition-all cursor-pointer"
+          >
+            <GoogleIcon />
+            <span>{isRegistering ? 'Sign up with Google' : 'Continue with Google'}</span>
+          </button>
+
+          {/* Hidden container for native Google rendered button */}
+          <div id="google-btn-rendered" className="hidden" />
+
+          {/* Localhost Origin Guidance for Developers */}
+          {showLocalhostNotice && (
+            <div className="p-3.5 rounded-xl bg-amber-50/90 border border-amber-300 text-amber-950 text-xs space-y-2.5 shadow-2xs">
+              <div className="flex items-start gap-2">
+                <AlertCircle className="h-4 w-4 text-amber-700 shrink-0 mt-0.5" />
+                <div className="text-[11px] leading-relaxed">
+                  <strong>Google Console Origin Note:</strong> Your Client ID is registered with authorized origin{' '}
+                  <span className="font-mono bg-amber-100 px-1 py-0.5 rounded text-[10px]">https://vibe-check-ai-ecru.vercel.app</span>.
+                  For local testing, add <span className="font-mono bg-amber-100 px-1 py-0.5 rounded text-[10px]">http://localhost:3000</span> to <em>Authorized JavaScript Origins</em> in your Google Cloud Console.
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => handleSimulateGoogleLogin()}
+                className="w-full py-1.5 px-3 rounded-lg bg-amber-700 hover:bg-amber-800 text-white font-bold text-[11px] flex items-center justify-center gap-2 transition-all cursor-pointer"
+              >
+                <GoogleIcon />
+                Continue with Verified Google Profile (Dev Test)
+              </button>
+            </div>
+          )}
+
+          {/* Divider */}
+          <div className="relative flex py-1 items-center">
+            <div className="grow border-t border-sand-200"></div>
+            <span className="shrink mx-3 text-[10px] font-bold text-sand-600 uppercase tracking-wider">
+              or continue with email
+            </span>
+            <div className="grow border-t border-sand-200"></div>
+          </div>
+        </div>
+
+        {/* ======================================================== */}
         {/* LOGIN FORM */}
+        {/* ======================================================== */}
         {!isRegistering ? (
           <form onSubmit={handleLoginSubmit} className="space-y-4">
             <div>
@@ -285,7 +537,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
 
             <button
               type="submit"
-              className="w-full py-2.5 rounded-xl bg-sand-900 text-sand-50 text-xs font-semibold hover:bg-sand-800 transition-all shadow-xs flex items-center justify-center gap-1.5"
+              className="w-full py-2.5 rounded-xl bg-sand-900 text-sand-50 text-xs font-semibold hover:bg-sand-800 transition-all shadow-xs flex items-center justify-center gap-1.5 cursor-pointer"
             >
               Sign In
               <ArrowRight className="h-3.5 w-3.5" />
@@ -300,7 +552,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
                 <button
                   type="button"
                   onClick={() => handleQuickDemoLogin('admin@luminahealth.org')}
-                  className="p-2 rounded-lg bg-sand-50 hover:bg-sand-100 border border-sand-200 text-left"
+                  className="p-2 rounded-lg bg-sand-50 hover:bg-sand-100 border border-sand-200 text-left cursor-pointer"
                 >
                   <div className="font-bold text-sand-900">Admin</div>
                   <div className="text-[10px] text-sand-500">Lumina Health</div>
@@ -308,7 +560,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
                 <button
                   type="button"
                   onClick={() => handleQuickDemoLogin('elena@luminahealth.org')}
-                  className="p-2 rounded-lg bg-sand-50 hover:bg-sand-100 border border-sand-200 text-left"
+                  className="p-2 rounded-lg bg-sand-50 hover:bg-sand-100 border border-sand-200 text-left cursor-pointer"
                 >
                   <div className="font-bold text-sand-900">Manager</div>
                   <div className="text-[10px] text-sand-500">Sign-Offs</div>
@@ -316,7 +568,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
                 <button
                   type="button"
                   onClick={() => handleQuickDemoLogin('julian@luminahealth.org')}
-                  className="p-2 rounded-lg bg-sand-50 hover:bg-sand-100 border border-sand-200 text-left"
+                  className="p-2 rounded-lg bg-sand-50 hover:bg-sand-100 border border-sand-200 text-left cursor-pointer"
                 >
                   <div className="font-bold text-sand-900">Reviewer</div>
                   <div className="text-[10px] text-sand-500">Editorial</div>
@@ -324,7 +576,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
                 <button
                   type="button"
                   onClick={() => handleQuickDemoLogin('maya@luminahealth.org')}
-                  className="p-2 rounded-lg bg-sand-50 hover:bg-sand-100 border border-sand-200 text-left"
+                  className="p-2 rounded-lg bg-sand-50 hover:bg-sand-100 border border-sand-200 text-left cursor-pointer"
                 >
                   <div className="font-bold text-sand-900">Creator</div>
                   <div className="text-[10px] text-sand-500">Draft & AI Scan</div>
@@ -333,7 +585,9 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
             </div>
           </form>
         ) : (
+          /* ======================================================== */
           /* REGISTRATION FORM */
+          /* ======================================================== */
           <form onSubmit={handleRegisterSubmit} className="space-y-4">
             <div>
               <label className="text-xs font-semibold text-sand-700 block mb-1">
@@ -345,11 +599,10 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
                     key={role}
                     type="button"
                     onClick={() => setRegRole(role)}
-                    className={`py-1.5 px-2 rounded-lg text-xs font-semibold uppercase tracking-wider border transition-all ${
-                      regRole === role
+                    className={`py-1.5 px-2 rounded-lg text-xs font-semibold uppercase tracking-wider border transition-all cursor-pointer ${regRole === role
                         ? 'bg-sand-900 text-sand-50 border-sand-900 shadow-2xs'
                         : 'bg-sand-50 text-sand-700 border-sand-200 hover:bg-sand-100'
-                    }`}
+                      }`}
                   >
                     {role}
                   </button>
@@ -477,7 +730,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
                   <button
                     type="button"
                     onClick={() => onOpenLegal?.('terms')}
-                    className="font-bold underline text-[#3C311F] hover:text-sand-950"
+                    className="font-bold underline text-[#3C311F] hover:text-sand-950 cursor-pointer"
                   >
                     Terms &amp; Conditions
                   </button>{' '}
@@ -485,7 +738,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
                   <button
                     type="button"
                     onClick={() => onOpenLegal?.('privacy')}
-                    className="font-bold underline text-[#3C311F] hover:text-sand-950"
+                    className="font-bold underline text-[#3C311F] hover:text-sand-950 cursor-pointer"
                   >
                     Privacy Policy
                   </button>
@@ -496,12 +749,12 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
 
             <button
               type="submit"
-              className="w-full py-2.5 rounded-xl bg-sand-900 text-sand-50 text-xs font-semibold hover:bg-sand-800 transition-all shadow-xs flex items-center justify-center gap-1.5"
+              className="w-full py-2.5 rounded-xl bg-sand-900 text-sand-50 text-xs font-semibold hover:bg-sand-800 transition-all shadow-xs flex items-center justify-center gap-1.5 cursor-pointer"
             >
               {regRole === 'admin' ? (
                 <>
                   <CreditCard className="h-3.5 w-3.5 text-amber-300" />
-                  Proceed to Payment (₹5,000/mo) & Activate
+                  Proceed to Payment (₹5,000/mo) &amp; Activate
                 </>
               ) : (
                 <>
