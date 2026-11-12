@@ -114,7 +114,7 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
         tpl = `## Evidence-Based Strategies for Sustainable Vitality\n\nMaintaining daily energy and cognitive balance requires a multi-faceted approach. Research indicates that circadian alignment, structured hydration, and evidence-based nutritional protocols produce substantial improvements in physical endurance.\n\n> "Wellness is not an occasional intervention, but a consistent, science-backed lifestyle protocol."\n\nExplore our clinician-curated health recommendations to optimize your daily routine.`;
         break;
       case 'social':
-        tpl = `Elevate your wellness standards. ✨\n\nDiscover evidence-based wellness solutions engineered to support your daily vitality. Pure ingredients, transparent sourcing, and validated results.\n\n👉 Discover the full clinical story at luminahealth.com`;
+        tpl = `Elevate your wellness standards.\n\nDiscover evidence-based wellness solutions engineered to support your daily vitality. Pure ingredients, transparent sourcing, and validated results.\n\nDiscover the full clinical story at luminahealth.com`;
         break;
       default:
         break;

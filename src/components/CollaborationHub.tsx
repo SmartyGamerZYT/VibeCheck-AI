@@ -169,15 +169,17 @@ export const CollaborationHub: React.FC<CollaborationHubProps> = ({
     };
   }, [camStream, screenStream]);
 
-  // Synchronize Screen Sharing and Call State across users/tabs
+  // Synchronize Screen Sharing and Call State across users/tabs (Google Meet Room Model)
   const syncCallState = () => {
     try {
+      const pId = selectedProject?.id || 'default';
+
       // 1. Invitations sync
       const raw = localStorage.getItem('vibecheck_call_invitations');
       if (raw) {
         const allInvites: CallInvitation[] = JSON.parse(raw);
 
-        // Check incoming invite for logged in user
+        // Check incoming invite for logged in user (only if pending)
         const toMe = allInvites.find(
           (inv) => inv.toUserId === currentUser.id && inv.status === 'pending'
         );
@@ -189,21 +191,34 @@ export const CollaborationHub: React.FC<CollaborationHubProps> = ({
             (inv) => inv.fromUser.id === currentUser.id && inv.projectId === selectedProject.id
           );
           setOutgoingInvites(myOutgoing);
-
-          // If an invite was accepted, ensure that member is in the call
-          myOutgoing.forEach((inv) => {
-            if (inv.status === 'accepted') {
-              const acceptedUser = teamMembers.find((m) => m.id === inv.toUserId);
-              if (acceptedUser && !callParticipants.some((p) => p.id === acceptedUser.id)) {
-                setCallParticipants((prev) => [...prev, acceptedUser]);
-              }
-            }
-          });
         }
       }
 
-      // 2. Synchronized Screen Share Sync
-      const pId = selectedProject?.id || 'default';
+      // 2. Room Presence sync (Google Meet model: strictly members active right now)
+      if (isInCall) {
+        const key = `vibecheck_room_presence_${pId}`;
+        const rawPres = localStorage.getItem(key);
+        const now = Date.now();
+        let list: Array<{ user: UserAccount; lastPing: number }> = rawPres ? JSON.parse(rawPres) : [];
+
+        // Prune any member whose heartbeat is older than 5 seconds
+        list = list.filter((p) => now - p.lastPing < 5000);
+
+        // Record our own heartbeat
+        const myIdx = list.findIndex((p) => p.user.id === currentUser.id);
+        if (myIdx >= 0) {
+          list[myIdx].lastPing = now;
+        } else {
+          list.push({ user: currentUser, lastPing: now });
+        }
+        localStorage.setItem(key, JSON.stringify(list));
+
+        // Update active call participants (only actively connected users)
+        const activeUsers = list.map((p) => p.user);
+        setCallParticipants(activeUsers);
+      }
+
+      // 3. Synchronized Screen Share Sync
       const rawScreen = localStorage.getItem(`vibecheck_screen_share_${pId}`);
       if (rawScreen) {
         const sData = JSON.parse(rawScreen);
@@ -211,9 +226,11 @@ export const CollaborationHub: React.FC<CollaborationHubProps> = ({
           setRemoteScreenShare(sData);
         } else if (!sData.isSharing) {
           setRemoteScreenShare(null);
+          setRemoteScreenStream(null);
         }
       } else {
         setRemoteScreenShare(null);
+        setRemoteScreenStream(null);
       }
     } catch { }
   };
@@ -224,10 +241,12 @@ export const CollaborationHub: React.FC<CollaborationHubProps> = ({
     const handleStorage = () => syncCallState();
     const handleCustomInvite = () => syncCallState();
     const handleCustomScreen = () => syncCallState();
+    const handleRoomUpdate = () => syncCallState();
 
     window.addEventListener('storage', handleStorage);
     window.addEventListener('vibecheck_call_invite', handleCustomInvite);
     window.addEventListener('vibecheck_screen_share_update', handleCustomScreen);
+    window.addEventListener('vibecheck_room_presence_update', handleRoomUpdate);
 
     const interval = setInterval(syncCallState, 1500);
 
@@ -235,9 +254,10 @@ export const CollaborationHub: React.FC<CollaborationHubProps> = ({
       window.removeEventListener('storage', handleStorage);
       window.removeEventListener('vibecheck_call_invite', handleCustomInvite);
       window.removeEventListener('vibecheck_screen_share_update', handleCustomScreen);
+      window.removeEventListener('vibecheck_room_presence_update', handleRoomUpdate);
       clearInterval(interval);
     };
-  }, [currentUser.id, isInCall, selectedProject?.id, callParticipants.length]);
+  }, [currentUser.id, isInCall, selectedProject?.id]);
 
   // Keep screen video srcObject attached whenever active stream exists
   useEffect(() => {
@@ -384,10 +404,58 @@ export const CollaborationHub: React.FC<CollaborationHubProps> = ({
             console.warn('WebRTC ICE error:', err);
           }
         }
+      } else if (data.type === 'peer-left') {
+        // Immediate Google Meet style member departure
+        setCallParticipants((prev) => prev.filter((p) => p.id !== data.userId));
+        setRemoteCamStreams((prev) => {
+          const copy = { ...prev };
+          delete copy[data.userId];
+          return copy;
+        });
+        if (data.from && peerConnections.has(data.from)) {
+          peerConnections.get(data.from)?.close();
+          peerConnections.delete(data.from);
+        }
+      } else if (data.type === 'screen-started') {
+        if (data.userId !== currentUser.id) {
+          setRemoteScreenShare({
+            userId: data.userId,
+            userName: data.userName,
+            userRole: data.userRole || 'Member',
+            isSharing: true,
+          });
+        }
       } else if (data.type === 'screen-stopped') {
         setRemoteScreenStream(null);
+        setRemoteScreenShare(null);
       }
     };
+
+    // When screenStream starts, renegotiate and transmit screen track to all connected peers
+    if (screenStream && isScreenSharing) {
+      const sTrack = screenStream.getVideoTracks()[0];
+      if (sTrack) {
+        peerConnections.forEach(async (pc, targetPeerId) => {
+          const senders = pc.getSenders();
+          if (!senders.some((s) => s.track?.id === sTrack.id)) {
+            try {
+              pc.addTrack(sTrack, screenStream);
+              const offer = await pc.createOffer();
+              await pc.setLocalDescription(offer);
+              channel?.postMessage({
+                type: 'sdp-offer',
+                from: myPeerId,
+                to: targetPeerId,
+                userId: currentUser.id,
+                sdp: offer,
+              });
+            } catch (e) {
+              console.warn('Screen share renegotiation notice:', e);
+            }
+          }
+        });
+      }
+    }
 
     if (isInCall) {
       channel.postMessage({
@@ -397,14 +465,26 @@ export const CollaborationHub: React.FC<CollaborationHubProps> = ({
       });
     }
 
+    const handleBeforeUnload = () => {
+      if (isInCall) {
+        channel?.postMessage({
+          type: 'peer-left',
+          from: myPeerId,
+          userId: currentUser.id,
+        });
+      }
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+
     return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
       try {
         channel?.close();
       } catch { }
       peerConnections.forEach((pc) => pc.close());
       peerConnections.clear();
     };
-  }, [isInCall, camStream, isCamActive, screenStream, isScreenSharing, currentUser.id, callParticipants]);
+  }, [isInCall, camStream, isCamActive, screenStream, isScreenSharing, currentUser.id]);
 
   const statusConfig: Record<
     ProjectStatus,
@@ -464,11 +544,28 @@ export const CollaborationHub: React.FC<CollaborationHubProps> = ({
       return;
     }
 
+    const pId = selectedProject?.id || 'default';
     setIsInCall(true);
     setActiveTab('huddle');
     setCallHost(currentUser);
     setCallParticipants([currentUser]);
     setMediaNotice(null);
+
+    // Register active room presence for this project
+    try {
+      const key = `vibecheck_room_presence_${pId}`;
+      const raw = localStorage.getItem(key);
+      const now = Date.now();
+      let list: Array<{ user: UserAccount; lastPing: number }> = raw ? JSON.parse(raw) : [];
+      list = list.filter((p) => p.user.id !== currentUser.id && now - p.lastPing < 5000);
+      list.push({ user: currentUser, lastPing: now });
+      localStorage.setItem(key, JSON.stringify(list));
+      window.dispatchEvent(new CustomEvent('vibecheck_room_presence_update'));
+
+      const bc = new BroadcastChannel('vibecheck_webrtc_meet');
+      bc.postMessage({ type: 'peer-joined', userId: currentUser.id, pId });
+      bc.close();
+    } catch {}
 
     setCallMessages([
       {
@@ -507,6 +604,8 @@ export const CollaborationHub: React.FC<CollaborationHubProps> = ({
   };
 
   const handleEndCall = () => {
+    const pId = selectedProject?.id || 'default';
+
     if (camStream) {
       camStream.getTracks().forEach((track) => track.stop());
       setCamStream(null);
@@ -520,12 +619,46 @@ export const CollaborationHub: React.FC<CollaborationHubProps> = ({
       if ((window as any).__vibecheck_cam_streams) {
         delete (window as any).__vibecheck_cam_streams[currentUser.id];
       }
-      const pId = selectedProject?.id || 'default';
       localStorage.setItem(`vibecheck_screen_share_${pId}`, JSON.stringify({ isSharing: false }));
       window.dispatchEvent(new CustomEvent('vibecheck_screen_share_update'));
+
+      // Remove from room presence immediately so other participants' screens update like Google Meet
+      try {
+        const key = `vibecheck_room_presence_${pId}`;
+        const raw = localStorage.getItem(key);
+        if (raw) {
+          const list: Array<{ user: UserAccount; lastPing: number }> = JSON.parse(raw);
+          const filtered = list.filter((p) => p.user.id !== currentUser.id);
+          localStorage.setItem(key, JSON.stringify(filtered));
+          window.dispatchEvent(new CustomEvent('vibecheck_room_presence_update'));
+        }
+      } catch {}
+
+      // Expire invitations involving current user
+      try {
+        const rawInv = localStorage.getItem('vibecheck_call_invitations');
+        if (rawInv) {
+          const all: CallInvitation[] = JSON.parse(rawInv);
+          const updated = all.map((i) =>
+            i.toUserId === currentUser.id || i.fromUser.id === currentUser.id
+              ? { ...i, status: 'ended' as any }
+              : i
+          );
+          localStorage.setItem('vibecheck_call_invitations', JSON.stringify(updated));
+          window.dispatchEvent(new CustomEvent('vibecheck_call_invite'));
+        }
+      } catch {}
+
+      // Broadcast immediate leave event to all peers
+      try {
+        const bc = new BroadcastChannel('vibecheck_webrtc_meet');
+        bc.postMessage({ type: 'peer-left', userId: currentUser.id, pId });
+        bc.close();
+      } catch {}
     }
 
     setIsScreenSharing(false);
+    setRemoteScreenStream(null);
     setRemoteScreenShare(null);
     setIsInCall(false);
     setCallParticipants([]);
@@ -620,6 +753,25 @@ export const CollaborationHub: React.FC<CollaborationHubProps> = ({
             })
           );
           window.dispatchEvent(new CustomEvent('vibecheck_screen_share_update'));
+          try {
+            const bc = new BroadcastChannel('vibecheck_webrtc_meet');
+            bc.postMessage({
+              type: 'screen-started',
+              userId: currentUser.id,
+              userName: currentUser.name,
+              userRole: currentUser.role,
+              pId,
+            });
+            bc.close();
+          } catch {}
+        }
+
+        if (screenVideoRef.current) {
+          screenVideoRef.current.srcObject = stream;
+          screenVideoRef.current.onloadedmetadata = () => {
+            screenVideoRef.current?.play().catch(() => {});
+          };
+          screenVideoRef.current.play().catch(() => {});
         }
 
         stream.getVideoTracks()[0].onended = () => {
@@ -724,7 +876,7 @@ export const CollaborationHub: React.FC<CollaborationHubProps> = ({
     setPuterTranscriptionStatus('Generating AI Meeting Summary...');
     const puter = typeof window !== 'undefined' ? (window as any).puter : null;
 
-    const summaryContent = `📋 AI Meeting Summary:
+    const summaryContent = `AI Meeting Summary:
 • Presenter: Reviewing Brand Strategy & Compliance Deck.
 • Claims Cleared: Clinical efficacy statements authenticated against FDA registry #2024-819.
 • Design Compliance: WCAG AAA color contrast ratios confirmed across all display assets.
@@ -855,6 +1007,18 @@ export const CollaborationHub: React.FC<CollaborationHubProps> = ({
       setCallParticipants((prev) => [...prev, member]);
     }
 
+    const pId = selectedProject?.id || 'default';
+    try {
+      const key = `vibecheck_room_presence_${pId}`;
+      const rawPres = localStorage.getItem(key);
+      const now = Date.now();
+      let list: Array<{ user: UserAccount; lastPing: number }> = rawPres ? JSON.parse(rawPres) : [];
+      list = list.filter((p) => p.user.id !== member.id && now - p.lastPing < 5000);
+      list.push({ user: member, lastPing: now });
+      localStorage.setItem(key, JSON.stringify(list));
+      window.dispatchEvent(new CustomEvent('vibecheck_room_presence_update'));
+    } catch {}
+
     setCallMessages((prev) => [
       ...prev,
       {
@@ -889,6 +1053,25 @@ export const CollaborationHub: React.FC<CollaborationHubProps> = ({
     setCallHost(incomingInvite.fromUser);
     setCallParticipants([incomingInvite.fromUser, currentUser]);
     setIncomingInvite(null);
+
+    const pId = incomingInvite.projectId || selectedProject?.id || 'default';
+    try {
+      const key = `vibecheck_room_presence_${pId}`;
+      const rawPres = localStorage.getItem(key);
+      const now = Date.now();
+      let list: Array<{ user: UserAccount; lastPing: number }> = rawPres ? JSON.parse(rawPres) : [];
+      list = list.filter((p) => p.user.id !== currentUser.id && now - p.lastPing < 5000);
+      list.push({ user: currentUser, lastPing: now });
+      if (!list.some((p) => p.user.id === incomingInvite.fromUser.id)) {
+        list.push({ user: incomingInvite.fromUser, lastPing: now });
+      }
+      localStorage.setItem(key, JSON.stringify(list));
+      window.dispatchEvent(new CustomEvent('vibecheck_room_presence_update'));
+
+      const bc = new BroadcastChannel('vibecheck_webrtc_meet');
+      bc.postMessage({ type: 'peer-joined', userId: currentUser.id, pId });
+      bc.close();
+    } catch {}
 
     setCallMessages([
       {
@@ -1551,7 +1734,22 @@ export const CollaborationHub: React.FC<CollaborationHubProps> = ({
                     {activeShareUser ? (
                       <div className="w-full h-full flex flex-col items-center justify-center relative bg-black rounded-xl overflow-hidden min-h-[360px] sm:min-h-[460px]">
                         <video
-                          ref={screenVideoRef}
+                          ref={(el) => {
+                            screenVideoRef.current = el;
+                            const stream =
+                              screenStream ||
+                              remoteScreenStream ||
+                              (typeof window !== 'undefined'
+                                ? (window as any).__vibecheck_screen_stream
+                                : null);
+                            if (el && stream && el.srcObject !== stream) {
+                              el.srcObject = stream;
+                              el.onloadedmetadata = () => {
+                                el.play().catch(() => {});
+                              };
+                              el.play().catch(() => {});
+                            }
+                          }}
                           autoPlay
                           playsInline
                           muted

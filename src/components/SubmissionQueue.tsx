@@ -334,7 +334,7 @@ export const SubmissionQueue: React.FC<SubmissionQueueProps> = ({
                 onClick={() => setSelectedSub(null)}
                 className="text-xs text-sand-400 hover:text-sand-700 font-bold"
               >
-                Close ✕
+                Close
               </button>
             </div>
 

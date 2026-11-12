@@ -215,7 +215,7 @@ export const AssetLibrary: React.FC<AssetLibraryProps> = ({
                 onClick={() => setPreviewAsset(null)}
                 className="text-xs text-sand-400 hover:text-sand-800 font-bold"
               >
-                Close ✕
+                Close
               </button>
             </div>
 
