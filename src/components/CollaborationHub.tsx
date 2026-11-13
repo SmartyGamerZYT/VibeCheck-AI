@@ -104,8 +104,10 @@ export const CollaborationHub: React.FC<CollaborationHubProps> = ({
     userId: string;
     userName: string;
     userRole: string;
+    streamId?: string;
     isSharing: boolean;
   } | null>(null);
+  const remoteScreenShareRef = useRef<typeof remoteScreenShare>(null);
 
   // Dynamic Call Participants (ONLY actual joined users appear in the call grid)
   const [callParticipants, setCallParticipants] = useState<UserAccount[]>([]);
@@ -131,22 +133,7 @@ export const CollaborationHub: React.FC<CollaborationHubProps> = ({
   const [puterTranscriptionStatus, setPuterTranscriptionStatus] = useState<string>('');
   const [meetingTranscripts, setMeetingTranscripts] = useState<
     Array<{ id: string; speaker: string; role: string; text: string; time: string; isAI?: boolean }>
-  >([
-    {
-      id: 't_init_1',
-      speaker: 'Elena Rostova',
-      role: 'Manager',
-      text: "Welcome to the editorial review. I'm sharing the Q4 compliance deck on the main screen now. Slide 1 covers our clinical claims validation.",
-      time: '12:12 PM',
-    },
-    {
-      id: 't_init_2',
-      speaker: 'Marcus Chen',
-      role: 'Legal Lead',
-      text: 'Thanks Elena. The footnote citations to FDA clearance #2024-819 are verified, and color contrast ratios meet WCAG AAA standards.',
-      time: '12:13 PM',
-    },
-  ]);
+  >([]);
   const [sharedSlideIdx, setSharedSlideIdx] = useState(1);
   const [isScreenFullscreen, setIsScreenFullscreen] = useState(false);
   const [screenZoom, setScreenZoom] = useState(100);
@@ -223,12 +210,15 @@ export const CollaborationHub: React.FC<CollaborationHubProps> = ({
       if (rawScreen) {
         const sData = JSON.parse(rawScreen);
         if (sData.isSharing && sData.userId !== currentUser.id) {
+          remoteScreenShareRef.current = sData;
           setRemoteScreenShare(sData);
         } else if (!sData.isSharing) {
+          remoteScreenShareRef.current = null;
           setRemoteScreenShare(null);
           setRemoteScreenStream(null);
         }
       } else {
+        remoteScreenShareRef.current = null;
         setRemoteScreenShare(null);
         setRemoteScreenStream(null);
       }
@@ -266,12 +256,22 @@ export const CollaborationHub: React.FC<CollaborationHubProps> = ({
       remoteScreenStream ||
       (typeof window !== 'undefined' ? (window as any).__vibecheck_screen_stream : null);
 
-    if (screenVideoRef.current && activeStream) {
-      if (screenVideoRef.current.srcObject !== activeStream) {
-        screenVideoRef.current.srcObject = activeStream;
-      }
-      screenVideoRef.current.play().catch(() => { });
-    }
+    const video = screenVideoRef.current;
+    if (!video || !activeStream) return;
+
+    if (video.srcObject !== activeStream) video.srcObject = activeStream;
+    const playWhenReady = () => {
+      if (video.srcObject === activeStream) video.play().catch(() => {});
+    };
+    video.addEventListener('loadedmetadata', playWhenReady);
+    video.addEventListener('canplay', playWhenReady);
+    activeStream.getVideoTracks().forEach((track) => track.addEventListener('unmute', playWhenReady));
+    playWhenReady();
+    return () => {
+      video.removeEventListener('loadedmetadata', playWhenReady);
+      video.removeEventListener('canplay', playWhenReady);
+      activeStream.getVideoTracks().forEach((track) => track.removeEventListener('unmute', playWhenReady));
+    };
   }, [screenStream, remoteScreenStream, remoteScreenShare, isScreenSharing]);
 
   // WebRTC Multi-Tab Streaming (Streams real Camera & Screen between members across tabs)
@@ -318,7 +318,9 @@ export const CollaborationHub: React.FC<CollaborationHubProps> = ({
               type: 'ice-candidate',
               from: myPeerId,
               to: targetPeerId,
-              candidate: event.candidate,
+              // BroadcastChannel uses structured clone; RTCIceCandidate instances
+              // are not cloneable in all supported browsers.
+              candidate: event.candidate.toJSON(),
             });
           }
         };
@@ -328,7 +330,10 @@ export const CollaborationHub: React.FC<CollaborationHubProps> = ({
           const track = event.track;
           const isDisplay =
             track.label.toLowerCase().includes('screen') ||
-            (track.getSettings && !!(track.getSettings() as any).displaySurface);
+            track.label.toLowerCase().includes('display') ||
+            (track.getSettings && !!(track.getSettings() as any).displaySurface) ||
+            (track.kind === 'video' && !!remoteScreenShareRef.current &&
+              remoteScreenShareRef.current.userId === peerUserId);
 
           if (isDisplay) {
             setRemoteScreenStream(stream);
@@ -365,7 +370,7 @@ export const CollaborationHub: React.FC<CollaborationHubProps> = ({
             from: myPeerId,
             to: data.from,
             userId: currentUser.id,
-            sdp: offer,
+            sdp: { type: offer.type, sdp: offer.sdp },
           });
         } catch (err) {
           console.warn('WebRTC offer error:', err);
@@ -381,7 +386,7 @@ export const CollaborationHub: React.FC<CollaborationHubProps> = ({
             from: myPeerId,
             to: data.from,
             userId: currentUser.id,
-            sdp: answer,
+            sdp: { type: answer.type, sdp: answer.sdp },
           });
         } catch (err) {
           console.warn('WebRTC answer error:', err);
@@ -418,14 +423,18 @@ export const CollaborationHub: React.FC<CollaborationHubProps> = ({
         }
       } else if (data.type === 'screen-started') {
         if (data.userId !== currentUser.id) {
-          setRemoteScreenShare({
+          const share = {
             userId: data.userId,
             userName: data.userName,
             userRole: data.userRole || 'Member',
+            streamId: data.streamId,
             isSharing: true,
-          });
+          };
+          remoteScreenShareRef.current = share;
+          setRemoteScreenShare(share);
         }
       } else if (data.type === 'screen-stopped') {
+        remoteScreenShareRef.current = null;
         setRemoteScreenStream(null);
         setRemoteScreenShare(null);
       }
@@ -447,7 +456,7 @@ export const CollaborationHub: React.FC<CollaborationHubProps> = ({
                 from: myPeerId,
                 to: targetPeerId,
                 userId: currentUser.id,
-                sdp: offer,
+                sdp: { type: offer.type, sdp: offer.sdp },
               });
             } catch (e) {
               console.warn('Screen share renegotiation notice:', e);
@@ -733,7 +742,7 @@ export const CollaborationHub: React.FC<CollaborationHubProps> = ({
       if (typeof navigator !== 'undefined' && navigator.mediaDevices?.getDisplayMedia) {
         const stream = await navigator.mediaDevices.getDisplayMedia({
           video: true,
-          audio: false,
+          audio: true,
         });
 
         setScreenStream(stream);
@@ -760,6 +769,7 @@ export const CollaborationHub: React.FC<CollaborationHubProps> = ({
               userId: currentUser.id,
               userName: currentUser.name,
               userRole: currentUser.role,
+              streamId: stream.id,
               pId,
             });
             bc.close();
@@ -775,6 +785,7 @@ export const CollaborationHub: React.FC<CollaborationHubProps> = ({
         }
 
         stream.getVideoTracks()[0].onended = () => {
+          // Native browser Stop sharing follows the same cleanup and signaling path.
           setScreenStream(null);
           setIsScreenSharing(false);
           if (typeof window !== 'undefined') {
@@ -978,57 +989,6 @@ export const CollaborationHub: React.FC<CollaborationHubProps> = ({
       `${currentUser.name} sent call invite to ${member.name} for "${selectedProject.title}".`,
       'collaboration'
     );
-  };
-
-  // Simulate invited user accepting and entering call
-  const handleSimulateAnswerAndJoin = (memberId: string) => {
-    const member = teamMembers.find((m) => m.id === memberId);
-    if (!member) return;
-
-    try {
-      const raw = localStorage.getItem('vibecheck_call_invitations');
-      if (raw) {
-        const all: CallInvitation[] = JSON.parse(raw);
-        const updated = all.map((i) =>
-          i.toUserId === memberId && i.status === 'pending'
-            ? { ...i, status: 'accepted' as const }
-            : i
-        );
-        localStorage.setItem('vibecheck_call_invitations', JSON.stringify(updated));
-        window.dispatchEvent(new CustomEvent('vibecheck_call_invite'));
-      }
-    } catch { }
-
-    setOutgoingInvites((prev) =>
-      prev.map((i) => (i.toUserId === memberId ? { ...i, status: 'accepted' } : i))
-    );
-
-    if (!callParticipants.some((p) => p.id === member.id)) {
-      setCallParticipants((prev) => [...prev, member]);
-    }
-
-    const pId = selectedProject?.id || 'default';
-    try {
-      const key = `vibecheck_room_presence_${pId}`;
-      const rawPres = localStorage.getItem(key);
-      const now = Date.now();
-      let list: Array<{ user: UserAccount; lastPing: number }> = rawPres ? JSON.parse(rawPres) : [];
-      list = list.filter((p) => p.user.id !== member.id && now - p.lastPing < 5000);
-      list.push({ user: member, lastPing: now });
-      localStorage.setItem(key, JSON.stringify(list));
-      window.dispatchEvent(new CustomEvent('vibecheck_room_presence_update'));
-    } catch {}
-
-    setCallMessages((prev) => [
-      ...prev,
-      {
-        id: `sys_${Date.now()}`,
-        sender: 'System',
-        role: 'system',
-        text: `${member.name} (${member.role}) accepted call request and joined.`,
-        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      },
-    ]);
   };
 
   // Accept incoming call request
@@ -1733,15 +1693,20 @@ export const CollaborationHub: React.FC<CollaborationHubProps> = ({
                   <div className="relative rounded-2xl bg-black border border-stone-800 overflow-hidden min-h-[360px] sm:min-h-[460px] flex items-center justify-center p-2 shadow-2xl">
                     {activeShareUser ? (
                       <div className="w-full h-full flex flex-col items-center justify-center relative bg-black rounded-xl overflow-hidden min-h-[360px] sm:min-h-[460px]">
-                        <video
+                        {isScreenSharing && activeShareUser.userId === currentUser.id ? (
+                          <div className="flex flex-col items-center gap-4 text-center text-white">
+                            <MonitorUp className="h-10 w-10 text-blue-400" />
+                            <div>
+                              <h5 className="font-semibold">You&apos;re presenting</h5>
+                              <p className="mt-1 text-xs text-stone-300">Your screen is visible to other participants.</p>
+                            </div>
+                            <button onClick={handleToggleScreenShare} className="rounded-lg bg-rose-600 px-4 py-2 text-xs font-bold text-white hover:bg-rose-700">Stop presenting</button>
+                          </div>
+                        ) : (
+                          <video
                           ref={(el) => {
                             screenVideoRef.current = el;
-                            const stream =
-                              screenStream ||
-                              remoteScreenStream ||
-                              (typeof window !== 'undefined'
-                                ? (window as any).__vibecheck_screen_stream
-                                : null);
+                            const stream = activeSharedStream;
                             if (el && stream && el.srcObject !== stream) {
                               el.srcObject = stream;
                               el.onloadedmetadata = () => {
@@ -1755,6 +1720,7 @@ export const CollaborationHub: React.FC<CollaborationHubProps> = ({
                           muted
                           className="w-full h-full max-h-[520px] object-contain rounded-xl bg-black"
                         />
+                        )}
                         <div className="absolute top-3 left-3 bg-stone-950/85 backdrop-blur-md px-3 py-1 rounded-full text-xs text-white font-medium flex items-center gap-2 border border-stone-700 shadow-md">
                           <MonitorUp className="h-3.5 w-3.5 text-blue-400" />
                           <span>{activeShareUser.userName}&apos;s screen</span>
@@ -1824,7 +1790,7 @@ export const CollaborationHub: React.FC<CollaborationHubProps> = ({
                                       el.play().catch(() => { });
                                     }
                                   }}
-                                  className="w-full h-full object-cover"
+                                  className="w-full h-full object-cover scale-x-[-1]"
                                 />
                               ) : (
                                 <div className="w-full h-full bg-stone-900 flex items-center justify-center">
@@ -1934,13 +1900,6 @@ export const CollaborationHub: React.FC<CollaborationHubProps> = ({
                                         <Loader2 className="h-2.5 w-2.5 animate-spin" />
                                         Request Sent...
                                       </span>
-                                      <button
-                                        onClick={() => handleSimulateAnswerAndJoin(member.id)}
-                                        className="px-2 py-1 rounded-md bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] font-bold shadow-2xs"
-                                        title="Simulate this member clicking Accept & Join"
-                                      >
-                                        Simulate Accept
-                                      </button>
                                       {onSwitchUser && (
                                         <button
                                           onClick={() => onSwitchUser(member)}
