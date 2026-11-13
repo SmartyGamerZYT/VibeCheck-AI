@@ -1,123 +1,366 @@
 # System Architecture & Technical Specifications — VibeCheck AI
 
-## 1. High-Level Architecture Overview
-VibeCheck AI is built on the **Next.js 14 App Router** combining React Server Components (RSC), Client Components (`'use client'`), Node.js Route Handlers, and WebRTC peer-to-peer real-time communication.
+```
+========================================================================================
+  VIBECHECK AI — FULL SYSTEM ARCHITECTURE & COMPONENT INTEGRATION BLUEPRINT
+  Document Version: 3.0.0 | Architecture: Next.js 14 App Router | Pattern: Multi-Tenant
+========================================================================================
+```
+
+---
+
+## 1. End-to-End Website Flow Architecture
+
+The diagram below illustrates the comprehensive user journey, routing topology, and state transitions from public landing to certified omnichannel release:
+
+```mermaid
+flowchart TD
+    Start([Visitor Enters Application]) --> Landing[LandingPage Component]
+    
+    Landing -->|Click 'Sign In' / 'Get Started'| Auth[AuthScreen Component]
+    Landing -->|Click Legal Links in Footer| LegalModal[LegalSupportModal Component]
+    
+    subgraph Authentication & Identity Pipeline
+        Auth --> GoogleAuth[Google OAuth 2.0 Client\ngsi/client]
+        Auth --> CredAuth[Email & Password Credentials]
+        Auth --> ForgotPass[Self-Service Password Reset]
+        ForgotPass --> CredAuth
+        GoogleAuth --> SessionGen[Session Generator & Org Resolver]
+        CredAuth --> SessionGen
+    end
+
+    SessionGen --> TenantRouter{Multi-Tenant Role Router}
+    
+    TenantRouter -->|Role: Creator| CreatorView[Document Editor & Draft Composer]
+    TenantRouter -->|Role: Reviewer| ReviewerView[Approval Queue & Inline Annotator]
+    TenantRouter -->|Role: Manager| ManagerView[Timeline, Live Huddle & SHA-256 Sign-Off]
+    TenantRouter -->|Role: Admin| AdminView[Tone Calibrator, Claims DB & Accuracy Meter]
+
+    subgraph Feature Engine Subsystems
+        CreatorView --> DocxParser[Client Mammoth.js DOCX Parser]
+        CreatorView --> MultiFactorReview[Multi-Factor AI Review Engine]
+        
+        ReviewerView --> QueueEngine[Submission Queue & Review Status Engine]
+        QueueEngine --> Revisions[Request Revision Loop]
+        Revisions --> CreatorView
+        
+        ManagerView --> CollabHub[Collaboration Hub & Milestone Tracker]
+        CollabHub --> WebRTCHuddle[WebRTC Video & Real Screen Share]
+        CollabHub --> DiffViewer[Side-by-Side Character Diff Engine]
+        CollabHub --> ShaSeal[SHA-256 Cryptographic Seal Generator]
+        
+        AdminView --> ToneSliders[Tone Calibration Vector Sliders]
+        AdminView --> ClaimDB[Certified Claim & Nomenclature Database]
+        AdminView --> Billing[Subscription Checkout ₹5,000/mo]
+        AdminView --> MistakeTracker[Member Mistakes & Accuracy Meter]
+    end
+
+    subgraph Media Governance Layer
+        MultiFactorReview --> MediaAudit[Media Governance Engine]
+        MediaAudit --> CanvasCV[HTML5 Canvas Pixel Computer Vision]
+        MediaAudit --> CadenceAnalyzer[Audio Cadence & LUFS Analyzer]
+        MediaAudit --> WatermarkDetector[Stock Watermark Classifier]
+    end
+
+    ShaSeal ==> FinalPublish([Certified Omnichannel Publication])
+```
+
+---
+
+## 2. Technology Stack Architecture
+
+```
++--------------------------------------------------------------------------------------------------+
+|                                  COMPLETE TECHNOLOGY STACK MATRIX                                |
++------------------+------------------------------+------------------------------------------------+
+| Layer            | Primary Technology           | Architectural Role & Capabilities              |
++------------------+------------------------------+------------------------------------------------+
+| Framework        | Next.js 14.2 (App Router)    | Hybrid RSC & Client Components, Route Handlers |
+| UI Runtime       | React 18.3                   | State synchronization, Callback Refs, Contexts |
+| Styling & Theme  | Tailwind CSS 3.4             | "Sandstone & Bronze" custom tokens, Responsive |
+| Type Safety      | TypeScript 5.0 (Strict)      | Strict interfaces, type assertions, noImplicit |
+| Icons & Visuals  | Lucide React                 | Clean vector typography without unicode emojis |
+| Document Parsing | Mammoth.js (Client-Side)     | Native binary .docx to markdown conversion     |
+| Real-Time Media  | Native Browser WebRTC        | RTCPeerConnection, STUN (Google), Local Streams|
+| Screen Capture   | Screen Capture API           | navigator.mediaDevices.getDisplayMedia         |
+| WebRTC Signaling | BroadcastChannel API         | Zero-dependency inter-tab WebRTC signaling     |
+| Computer Vision  | HTML5 Canvas 2D Context      | Pixel luminance, Euclidean color distance, CV  |
+| Cryptography     | Web Crypto API (SHA-256)     | Immutable managerial approval certificate seals|
+| Identity Auth    | Google Identity Services     | OAuth 2.0 credential decoding & sign-in        |
+| AI Gateway       | OpenRouter REST API          | Multi-LLM linguistic & compliance auditing     |
+| Transaction Mail | Resend API                   | Automated transactional notifications          |
+| Asset Storage    | Cloudinary Media CDN         | Scalable enterprise brand asset hosting        |
++------------------+------------------------------+------------------------------------------------+
+```
+
+```mermaid
+graph LR
+    subgraph Client-Side Presentation
+        Next[Next.js 14 App Router]
+        React[React 18 Engine]
+        Tailwind[Tailwind CSS: Sandstone & Bronze]
+        Lucide[Lucide React Vector Library]
+    end
+
+    subgraph Browser Hardware & Native APIs
+        Canvas[HTML5 Canvas CV Engine]
+        WebRTC[WebRTC RTCPeerConnection]
+        Display[Screen Capture DisplayMedia API]
+        Crypto[Web Crypto API SHA-256]
+        BC[BroadcastChannel Signaling]
+    end
+
+    subgraph Serverless Backend & External APIs
+        Routes[Next.js Node.js Route Handlers]
+        OpenRouter[OpenRouter AI Multi-LLM Gateway]
+        Google[Google OAuth 2.0 Identity Services]
+        Cloudinary[Cloudinary Cloud Media CDN]
+        Resend[Resend Transactional Email API]
+    end
+
+    Client-Side Presentation --> Browser Hardware & Native APIs
+    Client-Side Presentation --> Serverless Backend & External APIs
+```
+
+---
+
+## 3. Directory & Folder Structure Architecture
 
 ```mermaid
 graph TD
-    Client[Browser Client - React 18] -->|HTTPS Requests| NextServer[Next.js 14 App Router Engine]
+    Root["/ (Project Root)"]
+    Root --> Docs["Docs/ (Engineering & Product Documentation)"]
+    Root --> Public["public/ (Static Assets & Favicons)"]
+    Root --> Src["src/ (Application Source Code)"]
+
+    Src --> App["app/ (Next.js App Router Core)"]
+    Src --> Components["components/ (Modular UI Systems)"]
+    Src --> Lib["lib/ (Engines, Types & Default Data)"]
+
+    App --> AppApi["api/ (Serverless Route Handlers)"]
+    App --> AppLayout["layout.tsx & globals.css"]
+    App --> AppPage["page.tsx (Master State Orchestrator)"]
+
+    AppApi --> ApiDocx["extract-docx/route.ts"]
+    AppApi --> ApiReview["review/route.ts"]
+    AppApi --> ApiImage["review-image/route.ts"]
+    AppApi --> ApiAudio["transcribe-audio/route.ts"]
+    AppApi --> ApiNotify["notify/route.ts"]
+    AppApi --> ApiUpload["upload/route.ts"]
+
+    Components --> CompAuth["AuthScreen.tsx"]
+    Components --> CompEditor["DocumentEditor.tsx"]
+    Components --> CompReview["ReviewEngine.tsx"]
+    Components --> CompMedia["MediaAudit.tsx"]
+    Components --> CompCollab["CollaborationHub.tsx"]
+    Components --> CompQueue["SubmissionQueue.tsx"]
+    Components --> CompDash["RoleDashboard.tsx"]
+    Components --> CompBrand["BrandGuidelinesBuilder.tsx"]
+    Components --> CompModals["Settings, Checkout & Legal Modals"]
+
+    Lib --> LibCV["accessibility-cv.ts (Canvas CV Engine)"]
+    Lib --> LibTypes["types.ts (Strict TypeScript Schemas)"]
+    Lib --> LibData["default-data.ts (Initial Seeds)"]
+    Lib --> LibClients["openrouter.ts, cloudinary.ts, resend.ts"]
+```
+
+```
+c:\Users\kshit\Desktop\VibeCheck AI\
+├── Docs/                                    # Architectural & Product Specifications
+│   ├── PRD.md                               # Product Requirements Document
+│   ├── Architecture.md                      # System Architecture & Topology
+│   ├── Design.md                            # UI/UX Style Guide & Design System
+│   ├── Task.md                              # Project Roadmap & Implementation Phases
+│   ├── Database.md                          # Data Models, ERD & Persistence
+│   ├── API.md                               # Serverless API Specifications
+│   ├── Agents.md                            # Multi-Agent Compliance Pipeline
+│   ├── Authentication &security.md          # Identity, RBAC & SHA-256 Signatures
+│   ├── Integrations.md                      # External Integrations (Cloudinary, Resend)
+│   ├── MCP connection.md                    # Model Context Protocol Specification
+│   ├── Project Implementation.md            # Component Hierarchy & Implementation Map
+│   ├── setup&initilisation.md               # Quickstart & Environment Setup
+│   ├── Testing &QA.md                       # Quality Assurance & Test Strategy
+│   └── Debugging.md                         # Troubleshooting & Diagnostic Runbook
+├── public/                                  # Static Assets & Metadata
+├── src/
+│   ├── app/                                 # Next.js 14 App Router Directory
+│   │   ├── api/                             # Serverless Node.js Route Handlers
+│   │   │   ├── extract-docx/route.ts        # Mammoth.js DOCX Parsing Endpoint
+│   │   │   ├── notify/route.ts              # Resend Transactional Email Endpoint
+│   │   │   ├── review/route.ts              # Multi-Agent Text Compliance Endpoint
+│   │   │   ├── review-image/route.ts        # Computer Vision Image Analysis Endpoint
+│   │   │   ├── transcribe-audio/route.ts    # Speech-to-Text Transcription Endpoint
+│   │   │   └── upload/route.ts              # Cloudinary Asset Upload Endpoint
+│   │   ├── globals.css                      # Tailwind Directives & CSS Variable Scales
+│   │   ├── layout.tsx                       # Root Layout with Google & Puter SDKs
+│   │   └── page.tsx                         # Master State Orchestrator Component
+│   ├── components/                          # Core Interactive React Components
+│   │   ├── AnalyticsInsights.tsx            # Compliance Analytics & Trend Charts
+│   │   ├── AssetLibrary.tsx                 # Brand Asset Storage & Tagging
+│   │   ├── AuditLogs.tsx                    # Tamper-Proof Audit Trail Explorer
+│   │   ├── AuthScreen.tsx                   # Google OAuth & Credential Sign-In / Reset
+│   │   ├── BrandGuidelinesBuilder.tsx       # Tone Sliders & Certified Claim Editor
+│   │   ├── CollaborationHub.tsx             # Milestone Tracker & WebRTC Huddle Room
+│   │   ├── CookieConsentBanner.tsx          # GDPR/ePrivacy Compliance Banner
+│   │   ├── DiffViewer.tsx                   # Side-by-Side Red/Green Diff Inspector
+│   │   ├── DocumentEditor.tsx               # Rich Document Composer & DOCX Importer
+│   │   ├── LandingPage.tsx                  # Public Marketing Showcase
+│   │   ├── LegalSupportModal.tsx            # Interactive 5-Tab Legal Dialog
+│   │   ├── MediaAudit.tsx                   # Audio Cadence, Video & Stock Watermark Scan
+│   │   ├── Navbar.tsx                       # Workspace Navigation & Profile Bar
+│   │   ├── ReviewEngine.tsx                 # Interactive Multi-Factor Content Review
+│   │   ├── RoleDashboard.tsx                # Role-Specific Portals & Accuracy Meter
+│   │   ├── SettingsModal.tsx                # Organization Key & User Preference Modal
+│   │   ├── Sidebar.tsx                      # Primary Navigation Sidebar
+│   │   ├── SubmissionQueue.tsx              # Editorial Queue with SHA-256 Sign-Off
+│   │   └── SubscriptionCheckoutModal.tsx    # ₹5,000/mo Organization Billing Modal
+│   └── lib/                                 # Core Engines, Types & Shared Utilities
+│       ├── accessibility-cv.ts              # HTML5 Canvas Computer Vision Engine
+│       ├── cloudinary.ts                    # Cloudinary SDK Configuration
+│       ├── default-data.ts                  # Demo Organizations, Claims & Guidelines
+│       ├── image-analysis.ts                # Client-Side Image Analysis Helpers
+│       ├── openrouter.ts                    # OpenRouter LLM Gateway Client
+│       ├── resend.ts                        # Resend Transactional Email Client
+│       └── types.ts                         # Strict TypeScript Domain Schemas
+├── .env.local                               # Private Local Environment Variables
+├── package.json                             # Dependencies & Script Definitions
+├── tailwind.config.ts                       # Tailwind Configuration & Sandstone Tokens
+└── tsconfig.json                            # Strict TypeScript Compiler Options
+```
+
+---
+
+## 4. Component Interconnectivity & Data Flow
+
+### 4.1 Master State Orchestrator (`src/app/page.tsx`)
+The master state orchestrator manages global data collections and isolates them per organization:
+
+```mermaid
+graph TD
+    State[Master State in page.tsx]
     
-    subgraph Client Application Layer
-        Page[src/app/page.tsx Orchestrator] --> Nav[Navbar Component]
-        Page --> Side[Sidebar Navigation]
-        Page --> Views[Role Views & Feature Modules]
-        Views --> Collab[Collaboration Hub & WebRTC Engine]
-        Views --> ReviewEngine[Review Engine & DOCX Importer]
-        Views --> MediaAudit[Media Governance & Audio/Video]
-        Views --> Dash[Role Dashboard & Admin Mistake Tracker]
-        Views --> Analytics[Governance Insights Analytics]
-        Page --> Modals[Legal, Checkout & Settings Modals]
+    subgraph Persistent Collections
+        State -->|Organizations| Orgs[organizations State]
+        State -->|Accounts| Accs[accounts State]
+        State -->|Projects| Projs[projects State]
+        State -->|Submissions| Subs[submissions State]
+        State -->|Guidelines| Guides[guidelines State]
+        State -->|Audit Logs| Audits[auditLogs State]
+        State -->|Mistakes| Mistakes[memberMistakes State]
     end
 
-    subgraph API Route Handlers
-        NextServer --> RouteReview[/api/review]
-        NextServer --> RouteTranscribe[/api/transcribe-audio]
-        NextServer --> RouteVision[/api/review-image]
-        NextServer --> RouteDocx[/api/extract-docx]
-        NextServer --> RouteUpload[/api/upload]
-        NextServer --> RouteNotify[/api/notify]
+    subgraph Component Consumers
+        Orgs --> AuthScreen
+        Accs --> AuthScreen
+        Projs --> CollabHub
+        Subs --> SubmissionQueue
+        Guides --> BrandGuidelines
+        Guides --> ReviewEngine
+        Audits --> AuditLogs
+        Mistakes --> RoleDashboard
     end
 
-    subgraph External Infrastructure
-        RouteReview --> OpenRouter[OpenRouter AI Gateway]
-        RouteTranscribe --> OpenRouter
-        RouteUpload --> Cloudinary[Cloudinary Media CDN]
-        RouteNotify --> Resend[Resend Transactional Mail]
-        Collab <-->|WebRTC Streams| PeerClient[Peer Clients]
+    subgraph LocalStorage Mirroring
+        Orgs -.->|Mirror| LS1[vibecheck_orgs]
+        Accs -.->|Mirror| LS2[vibecheck_accounts]
+        Projs -.->|Mirror| LS3[vibecheck_projects]
+        Subs -.->|Mirror| LS4[vibecheck_submissions]
     end
+```
+
+### 4.2 WebRTC Peer-to-Peer Stream & Signaling Architecture
+The diagram below demonstrates how Tab A and Tab B exchange real screen streams and webcam video without external socket servers:
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant TabA as Tab A (Host: Elena)
+    participant BC as BroadcastChannel ('vibecheck_webrtc_meet')
+    participant RoomLS as LocalStorage ('vibecheck_room_presence')
+    participant TabB as Tab B (Viewer: Julian)
+
+    TabA->>RoomLS: Writes presence ping (timestamp, inCall: true)
+    TabA->>BC: Broadcasts 'peer-joined' {userId: 'elena'}
+    BC->>TabB: Delivers 'peer-joined'
+    
+    TabB->>TabB: getOrCreatePC() instantiates RTCPeerConnection
+    TabA->>TabA: getOrCreatePC() instantiates RTCPeerConnection
+    
+    TabA->>BC: Sends 'sdp-offer' + ICE Candidates
+    BC->>TabB: Delivers 'sdp-offer'
+    TabB->>TabB: setRemoteDescription() & createAnswer()
+    TabB->>BC: Sends 'sdp-answer' + ICE Candidates
+    BC->>TabA: Delivers 'sdp-answer'
+    TabA->>TabA: setRemoteDescription()
+    
+    Note over TabA,TabB: Direct P2P WebRTC Connection Established (< 50ms)
+
+    TabA->>TabA: Clicks "Start Screen Sharing" (getDisplayMedia)
+    TabA->>TabA: Adds Screen Track to PeerConnection
+    TabA->>BC: Sends renegotiation 'sdp-offer' {isScreen: true}
+    BC->>TabB: Delivers renegotiation offer
+    TabB->>TabB: pc.ontrack fires with screen MediaStream!
+    TabB->>TabB: Callback ref assigns stream to video.srcObject
+    Note over TabB: Julian views Elena's genuine screen in 1080p
+
+    TabA->>TabA: Clicks "End Call"
+    TabA->>RoomLS: Prunes Elena from room presence
+    TabA->>BC: Broadcasts 'peer-left' {userId: 'elena'}
+    BC->>TabB: Delivers 'peer-left'
+    TabB->>TabB: Immediately removes Elena from call grid (Google Meet Style)
+```
+
+### 4.3 HTML5 Canvas Computer Vision Engine (`src/lib/accessibility-cv.ts`)
+The client-side Computer Vision pipeline inspects graphic assets entirely in browser memory:
+
+```mermaid
+flowchart TD
+    Img[Uploaded Image / Video Keyframe] --> Canvas[Off-Screen HTML5 Canvas 2D]
+    Canvas --> PixelData[Extract ImageData Context: 32-bit RGBA Pixels]
+    
+    PixelData --> Subsample[Grid Subsampling: 100x100 Pixel Grid]
+    
+    subgraph CV Analyses
+        Subsample --> Palette[K-Means Hue Clustering: Extract Dominant Hex Swatches]
+        Subsample --> Luminance[Relative Luminance Calculation: L = 0.2126R + 0.7152G + 0.0722B]
+        Subsample --> Watermark[High-Frequency Edge Filter: Commercial Stock Logo Detection]
+        Subsample --> SkinTone[YCbCr Color Space Mapping: Skin-Tone Coverage Detection]
+    end
+
+    Palette --> DeltaE[Compare Euclidean Distance vs Brand Hex Tokens]
+    Luminance --> ContrastRatio[Compute Contrast Ratio: CR = L1 + 0.05 / L2 + 0.05]
+    
+    DeltaE --> ResultReport[CanvasComputerVisionAudit Object]
+    ContrastRatio --> ResultReport
+    Watermark --> ResultReport
+    SkinTone --> ResultReport
+    
+    ResultReport ==> UI[Render Badges & Score in MediaAudit.tsx]
 ```
 
 ---
 
-## 2. Multi-Tenant Organization Data Isolation
-A core architectural requirement of VibeCheck AI is strict multi-tenant boundary enforcement:
+## 5. Security & Boundary Enforcement Architecture
 
-### 2.1 The Tenancy Model
-Every persistent entity is bound to an `orgId`:
-- `UserAccount.orgId`
-- `Project.orgId`
-- `ContentSubmission.orgId`
-- `AuditLogEntry.orgId`
-- `TeamChangeRecord.projectId` (linked via `Project.orgId`)
-- `MemberMistakeRecord.orgId`
-
-### 2.2 Client-Side Partitioning Pipeline
-In `src/app/page.tsx`, the active organization is resolved from the logged-in session:
-```ts
-const currentOrg = currentUser
-  ? organizations.find((o) => o.id === currentUser.orgId) || fallbackOrg
-  : organizations[0];
-
-// Memoized tenant partitions
-const orgTeamMembers = useMemo(
-  () => accounts.filter((a) => a.orgId === currentOrg.id),
-  [accounts, currentOrg.id]
-);
-
-const orgProjects = useMemo(
-  () => projects.filter((p) => p.orgId === currentOrg.id),
-  [projects, currentOrg.id]
-);
-
-const orgSubmissions = useMemo(
-  () => submissions.filter((s) => s.orgId === currentOrg.id),
-  [submissions, currentOrg.id]
-);
-
-const orgChangeRecords = useMemo(() => {
-  const orgProjIds = new Set(orgProjects.map((p) => p.id));
-  return changeRecords.filter((c) => orgProjIds.has(c.projectId));
-}, [changeRecords, orgProjects]);
 ```
-This guarantees that when Organization B logs in, they see zero projects, zero submissions, and zero team members from Organization A.
-
----
-
-## 3. WebRTC Collaboration & Live Screen Share Architecture
-
-### 3.1 Signaling & Handshake
-To eliminate external socket dependencies in standard deployments, VibeCheck AI uses a hybrid signaling bus:
-- Multi-Tab & Multi-Client synchronization via `window.addEventListener('storage')` and broadcast custom events (`vibecheck_call_invite`, `vibecheck_screen_share_update`).
-- Explicit invitation protocol: Host starts call $\to$ emits invite to target member $\to$ target member receives modal popup $\to$ accepts $\to$ peer connection activated.
-
-### 3.2 Media Stream Pipeline
-- Camera & Mic: Captured via `navigator.mediaDevices.getUserMedia({ audio: true, video: { width: 1280, height: 720 } })`.
-- Screen Share: Captured via `navigator.mediaDevices.getDisplayMedia({ video: { cursor: 'always' }, audio: false })`.
-- Stream Lifecycle Management:
-  ```ts
-  const stopAllTracks = (stream: MediaStream | null) => {
-    if (!stream) return;
-    stream.getTracks().forEach((track) => {
-      track.stop();
-      track.enabled = false;
-    });
-  };
-  ```
-- Screen video elements are bound via `srcObject` with fallback to native element renderers.
-
----
-
-## 4. Cryptographic Non-Repudiation Architecture (SHA-256)
-When an authorized Manager or Admin approves content:
-1. Canonical serialization:
-   $$\text{Payload} = \text{submissionId} \parallel \text{orgId} \parallel \text{title} \parallel \text{currentText} \parallel \text{author.email} \parallel \text{signerEmail} \parallel \text{timestamp}$$
-2. Cryptographic digest:
-   $$\text{Hash} = \text{SHA-256}(\text{Payload})$$
-3. The resulting 64-character hexadecimal digest is attached to the record and permanently recorded in `auditLogs`. Any alteration to approved text invalidates the cryptographic hash.
-
----
-
-## 5. Security & Secret Isolation
-- Environment keys (`OPENROUTER_API_KEY`, `GEMINI_API_KEY`, `CLOUDINARY_*`, `RESEND_*`) reside strictly in `.env.local` on the server runtime.
-- The root `.gitignore` file enforces exclusion of all `.env*` files, preventing accidental exposure to GitHub.
-- Client components access external AI services exclusively through intermediate Route Handlers (`/api/*`), never exposing raw API keys to browser devtools.
++--------------------------------------------------------------------------------------------------+
+|                                    SECURITY ARCHITECTURE OVERVIEW                                |
++------------------------+-------------------------------------+-----------------------------------+
+| Security Layer         | Threat Mitigated                    | Defensive Implementation          |
++------------------------+-------------------------------------+-----------------------------------+
+| Multi-Tenant Boundary  | Cross-organization data leakage     | Strict orgId scoping on all query |
+|                        |                                     | selectors, mutations, and views   |
++------------------------+-------------------------------------+-----------------------------------+
+| Non-Repudiation Proof  | Disputed approvals & alterations    | SHA-256 cryptographic digest of   |
+|                        |                                     | content + timestamp + manager ID  |
++------------------------+-------------------------------------+-----------------------------------+
+| Regulatory Defense     | FDA / FTC regulatory claim fines    | Hard-blocking claim validation    |
+|                        |                                     | rule `RULE-CLAIM-EXCESS`          |
++------------------------+-------------------------------------+-----------------------------------+
+| API Token Isolation    | Leakage of private provider keys    | Serverless route handlers isolate |
+|                        |                                     | OpenRouter, Resend & Cloudinary   |
++------------------------+-------------------------------------+-----------------------------------+
+| Memory Leak Defense    | Stale camera & screen tracks running| Explicit track termination loop on|
+|                        | in background after call completion | call end and beforeunload event   |
++------------------------+-------------------------------------+-----------------------------------+
+```
