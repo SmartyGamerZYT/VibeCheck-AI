@@ -251,10 +251,10 @@ export const CollaborationHub: React.FC<CollaborationHubProps> = ({
 
   // Keep screen video srcObject attached whenever active stream exists
   useEffect(() => {
-    const activeStream =
+    const activeStream: MediaStream | null =
       screenStream ||
       remoteScreenStream ||
-      (typeof window !== 'undefined' ? (window as any).__vibecheck_screen_stream : null);
+      (typeof window !== 'undefined' ? ((window as any).__vibecheck_screen_stream as MediaStream | null) : null);
 
     const video = screenVideoRef.current;
     if (!video || !activeStream) return;
@@ -265,12 +265,12 @@ export const CollaborationHub: React.FC<CollaborationHubProps> = ({
     };
     video.addEventListener('loadedmetadata', playWhenReady);
     video.addEventListener('canplay', playWhenReady);
-    activeStream.getVideoTracks().forEach((track) => track.addEventListener('unmute', playWhenReady));
+    activeStream.getVideoTracks().forEach((track: MediaStreamTrack) => track.addEventListener('unmute', playWhenReady));
     playWhenReady();
     return () => {
       video.removeEventListener('loadedmetadata', playWhenReady);
       video.removeEventListener('canplay', playWhenReady);
-      activeStream.getVideoTracks().forEach((track) => track.removeEventListener('unmute', playWhenReady));
+      activeStream.getVideoTracks().forEach((track: MediaStreamTrack) => track.removeEventListener('unmute', playWhenReady));
     };
   }, [screenStream, remoteScreenStream, remoteScreenShare, isScreenSharing]);
 
