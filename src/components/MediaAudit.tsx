@@ -8,6 +8,7 @@ import {
   ComplianceIssue,
   ReviewResult,
 } from '@/lib/types';
+import { WorkflowSyncPanel } from './WorkflowSyncPanel';
 import {
   Headphones,
   Film,
@@ -23,6 +24,7 @@ import {
   MicOff,
   AlertTriangle,
   Key,
+  Share2,
 } from 'lucide-react';
 
 interface MediaAuditProps {
@@ -61,6 +63,7 @@ export const MediaAudit: React.FC<MediaAuditProps> = ({
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
   const [videoAudit, setVideoAudit] = useState<VideoAnalysisResult | null>(null);
   const [selectedKeyframeIdx, setSelectedKeyframeIdx] = useState(0);
+  const [isSyncModalOpen, setIsSyncModalOpen] = useState(false);
 
   const audioPlayerRef = useRef<HTMLAudioElement>(null);
   const videoPlayerRef = useRef<HTMLVideoElement>(null);
@@ -790,6 +793,16 @@ export const MediaAudit: React.FC<MediaAuditProps> = ({
               </button>
 
               <button
+                type="button"
+                onClick={() => setIsSyncModalOpen(true)}
+                className="px-3.5 py-2 rounded-xl bg-sand-100 hover:bg-sand-200 border border-sand-300 text-sand-900 text-xs font-semibold flex items-center gap-1.5 shadow-2xs transition-colors"
+                title="Publish & Sync audio speech transcript to Canva, GitHub, Teams, etc."
+              >
+                <Share2 className="h-3.5 w-3.5 text-[#3C311F]" />
+                Sync to Other Platform
+              </button>
+
+              <button
                 onClick={handleRunAudioAudit}
                 disabled={isAuditing}
                 className="px-5 py-2 rounded-xl bg-[#3C311F] hover:bg-[#2B2316] text-white text-xs font-bold flex items-center gap-2 shadow-sm transition-all cursor-pointer disabled:opacity-50"
@@ -902,23 +915,35 @@ export const MediaAudit: React.FC<MediaAuditProps> = ({
                   </p>
                 </div>
               </div>
-              <button
-                onClick={handleRunAudioAudit}
-                disabled={isAuditing}
-                className="px-5 py-2.5 rounded-xl bg-[#3C311F] hover:bg-[#2B2316] text-white text-xs font-bold flex items-center justify-center gap-2 shadow-sm transition-all cursor-pointer whitespace-nowrap disabled:opacity-50"
-              >
-                {isAuditing ? (
-                  <>
-                    <RefreshCw className="h-3.5 w-3.5 animate-spin" />
-                    Auditing Speech...
-                  </>
-                ) : (
-                  <>
-                    <Sparkles className="h-3.5 w-3.5 text-amber-300" />
-                    {transcriptText.trim() ? 'Audit This Transcript' : 'Run AI Speech Audit'}
-                  </>
-                )}
-              </button>
+              <div className="flex items-center gap-2 flex-wrap">
+                <button
+                  type="button"
+                  onClick={() => setIsSyncModalOpen(true)}
+                  className="px-4 py-2.5 rounded-xl bg-white hover:bg-sand-100 text-sand-900 border border-sand-300 text-xs font-bold flex items-center justify-center gap-1.5 shadow-2xs transition-all cursor-pointer whitespace-nowrap"
+                  title="Sync speech transcript to Canva, GitHub, Teams, etc."
+                >
+                  <Share2 className="h-3.5 w-3.5 text-[#3C311F]" />
+                  Sync to Other Platform
+                </button>
+
+                <button
+                  onClick={handleRunAudioAudit}
+                  disabled={isAuditing}
+                  className="px-5 py-2.5 rounded-xl bg-[#3C311F] hover:bg-[#2B2316] text-white text-xs font-bold flex items-center justify-center gap-2 shadow-sm transition-all cursor-pointer whitespace-nowrap disabled:opacity-50"
+                >
+                  {isAuditing ? (
+                    <>
+                      <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                      Auditing Speech...
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="h-3.5 w-3.5 text-amber-300" />
+                      {transcriptText.trim() ? 'Audit This Transcript' : 'Run AI Speech Audit'}
+                    </>
+                  )}
+                </button>
+              </div>
             </div>
           </div>
 
@@ -1141,6 +1166,16 @@ export const MediaAudit: React.FC<MediaAuditProps> = ({
               </button>
 
               <button
+                type="button"
+                onClick={() => setIsSyncModalOpen(true)}
+                className="px-3.5 py-2 rounded-xl bg-sand-100 hover:bg-sand-200 border border-sand-300 text-sand-900 text-xs font-semibold flex items-center gap-1.5 shadow-2xs transition-colors"
+                title="Publish & Sync video presentation and frame assets to YouTube, Canva, Teams, etc."
+              >
+                <Share2 className="h-3.5 w-3.5 text-[#3C311F]" />
+                Sync to Other Platform
+              </button>
+
+              <button
                 onClick={handleRunVideoAudit}
                 disabled={isAuditing || !videoUrl}
                 className="px-5 py-2 rounded-xl bg-[#3C311F] hover:bg-[#2B2316] text-white text-xs font-bold flex items-center gap-2 shadow-sm disabled:opacity-50"
@@ -1344,6 +1379,43 @@ export const MediaAudit: React.FC<MediaAuditProps> = ({
           )}
         </div>
       )}
+
+      {/* Workflow Automation Sync Modal for Audio / Video */}
+      <WorkflowSyncPanel
+        title={
+          mediaType === 'audio'
+            ? audioFile?.name?.replace(/\.[^/.]+$/, '') || 'Speech Audio Presentation'
+            : videoFile?.name?.replace(/\.[^/.]+$/, '') || 'Video Creative Presentation'
+        }
+        content={
+          mediaType === 'audio'
+            ? transcriptText
+            : videoAudit?.keyframes[selectedKeyframeIdx]?.detectedText || transcriptText || 'Video visual and auditory brand audit'
+        }
+        imageUrl={
+          mediaType === 'video' && videoAudit?.keyframes[selectedKeyframeIdx]?.frameImageUrl
+            ? videoAudit.keyframes[selectedKeyframeIdx].frameImageUrl
+            : undefined
+        }
+        contentType={mediaType}
+        isModal={true}
+        isOpen={isSyncModalOpen}
+        onClose={() => setIsSyncModalOpen(false)}
+        onSaveLocally={() => {
+          onLogAudit(
+            'Media Asset Saved',
+            `Saved ${mediaType} draft locally before workflow sync.`,
+            'media'
+          );
+        }}
+        onSyncSuccess={(platforms) => {
+          onLogAudit(
+            'Workflow Synced',
+            `Synced ${mediaType} "${(mediaType === 'audio' ? audioFile?.name : videoFile?.name) || 'Media Draft'}" to ${platforms.join(', ')} via workflow automation webhook.`,
+            'workflow'
+          );
+        }}
+      />
     </div>
   );
 };

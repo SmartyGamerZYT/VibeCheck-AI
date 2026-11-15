@@ -7,6 +7,7 @@ import {
   UserAccount,
 } from '@/lib/types';
 import { INITIAL_INTEGRATIONS } from '@/lib/default-data';
+import { WorkflowSyncPanel } from './WorkflowSyncPanel';
 import {
   Workflow,
   CheckCircle2,
@@ -201,6 +202,22 @@ export const WorkflowIntegrations: React.FC<WorkflowIntegrationsProps> = ({
         </div>
       </div>
 
+      {/* REUSABLE WORKFLOW PUBLISH & SYNC PANEL */}
+      <WorkflowSyncPanel
+        title="Lumina Health Editorial & Brand Assets"
+        content="Certified clinical and marketing release. Ready for automated syndication across connected design, code, and social channels."
+        contentType="document"
+        isModal={false}
+        onSyncSuccess={(platforms) => {
+          onLogAudit(
+            'Workflow Synced',
+            `Dispatched content syndication to ${platforms.join(', ')} via workflow webhook.`,
+            'workflow'
+          );
+          setNotificationToast(`Workflow dispatch sent to ${platforms.join(', ')}!`);
+        }}
+      />
+
       {/* CATEGORY TABS */}
       <div className="flex gap-2 overflow-x-auto pb-1">
         {categories.map((cat) => (
@@ -256,9 +273,11 @@ export const WorkflowIntegrations: React.FC<WorkflowIntegrationsProps> = ({
                 </span>
               </div>
 
-              <p className="text-xs text-sand-600">
-                {platform.description}
-              </p>
+              {platform.description ? (
+                <p className="text-xs text-sand-600">
+                  {platform.description}
+                </p>
+              ) : null}
 
               {platform.isConnected && (
                 <div className="p-3 rounded-xl bg-sand-50 border border-sand-200 space-y-1 text-xs">

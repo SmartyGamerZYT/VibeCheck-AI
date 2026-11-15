@@ -22,6 +22,7 @@
 | `POST` | `/api/extract-docx` | Binary Word document text/structure extraction | None | Node.js Buffer |
 | `POST` | `/api/notify` | Transactional email dispatch via Resend | Server Secret | Node.js Serverless |
 | `POST` | `/api/upload` | Secure media storage via Cloudinary CDN | Session Auth | Node.js Serverless |
+| `POST` | `/api/sync-workflow` | Forward content/creatives to n8n / Make webhook | Bearer Secret | Node.js Serverless |
 
 ---
 
@@ -296,6 +297,43 @@ Sends transactional editorial notifications to reviewers, managers, and legal si
 {
   "success": true,
   "id": "msg_01HX98Z190AB7281"
+}
+```
+
+---
+
+### 3.7 Workflow Automation Sync (`POST /api/sync-workflow`)
+
+Forwards validated editorial documents, images, audio transcripts, or video assets to external workflow automation webhooks (n8n, Make) with bearer token security.
+
+```
++---------------------------------------------------------------------------------------+
+| POST /api/sync-workflow                                                               |
++---------------------------------------------------------------------------------------+
+| Headers: Content-Type: application/json                                               |
++---------------------------------------------------------------------------------------+
+```
+
+#### Request Payload Schema
+```json
+{
+  "title": "Q4 Metabolic Therapeutics Strategy",
+  "content": "Our metabolic protocol demonstrates 34% reduction in acute symptom flares...",
+  "imageUrl": "https://res.cloudinary.com/vibecheck/image/upload/sample.jpg",
+  "contentType": "document",
+  "platforms": ["Canva", "GitHub", "Microsoft Teams", "Figma", "YouTube"],
+  "updatedAt": "2026-11-14T16:00:00.000Z"
+}
+```
+
+#### Response Payload (`200 OK`)
+```json
+{
+  "success": true,
+  "message": "Content successfully synced to external workflow automation.",
+  "platforms": ["Canva", "GitHub", "Microsoft Teams", "Figma", "YouTube"],
+  "contentType": "document",
+  "updatedAt": "2026-11-14T16:00:00.000Z"
 }
 ```
 

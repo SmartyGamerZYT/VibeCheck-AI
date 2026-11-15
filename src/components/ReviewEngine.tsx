@@ -9,6 +9,7 @@ import {
   UserAccount,
 } from '@/lib/types';
 import { DiffViewer } from './DiffViewer';
+import { WorkflowSyncPanel } from './WorkflowSyncPanel';
 import {
   Sparkles,
   Upload,
@@ -22,6 +23,7 @@ import {
   ShieldAlert,
   ShieldCheck,
   FileSearch,
+  Share2,
 } from 'lucide-react';
 import { calculateReadability, calculateContrastRatio, extractRealPaletteFromImage, performFullCanvasComputerVisionAudit } from '@/lib/accessibility-cv';
 import { DocumentEditor } from './DocumentEditor';
@@ -53,6 +55,7 @@ export const ReviewEngine: React.FC<ReviewEngineProps> = ({
   
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [imageAnalysis, setImageAnalysis] = useState<any | null>(null);
+  const [isSyncModalOpen, setIsSyncModalOpen] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const docxInputRef = useRef<HTMLInputElement>(null);
@@ -433,6 +436,15 @@ export const ReviewEngine: React.FC<ReviewEngineProps> = ({
             <ImageIcon className="h-3.5 w-3.5 text-sand-600" />
             Check Image
           </button>
+
+          <button
+            onClick={() => setIsSyncModalOpen(true)}
+            className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-sand-100 hover:bg-sand-200 border border-sand-300 text-sand-900 flex items-center gap-1.5 shadow-2xs transition-colors"
+            title="Publish & Sync this document/image to external workflow platforms (Canva, GitHub, Teams, etc.)"
+          >
+            <Share2 className="h-3.5 w-3.5 text-[#3C311F]" />
+            Sync to Other Platform
+          </button>
         </div>
       </div>
 
@@ -701,27 +713,39 @@ export const ReviewEngine: React.FC<ReviewEngineProps> = ({
                 )}
               </button>
 
-              <button
-                onClick={handleSubmitQueue}
-                disabled={
-                  isSubmitting ||
-                  !text.trim() ||
-                  reviewResult?.issues?.some(
-                    (i) => (i.guidelineRef === 'RULE-CLAIM-EXCESS' || (i.category === 'claims' && i.severity === 'critical')) && i.status !== 'accepted'
-                  )
-                }
-                className="px-4 py-2 rounded-xl font-semibold text-xs bg-emerald-700 hover:bg-emerald-800 disabled:bg-sand-300 disabled:cursor-not-allowed text-white flex items-center gap-1.5 shadow-xs transition-colors"
-                title={
-                  reviewResult?.issues?.some(
-                    (i) => (i.guidelineRef === 'RULE-CLAIM-EXCESS' || (i.category === 'claims' && i.severity === 'critical')) && i.status !== 'accepted'
-                  )
-                    ? 'Blocked: Content contains excess unauthorized claims exceeding admin certified claim points.'
-                    : 'Submit content to workflow queue'
-                }
-              >
-                <Send className="h-3.5 w-3.5" />
-                Submit to Queue
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setIsSyncModalOpen(true)}
+                  className="px-3.5 py-2 rounded-xl font-semibold text-xs bg-sand-100 hover:bg-sand-200 border border-sand-300 text-sand-900 flex items-center gap-1.5 shadow-xs transition-colors"
+                  title="Publish & Sync to Canva, GitHub, Microsoft Teams, Figma, YouTube"
+                >
+                  <Share2 className="h-3.5 w-3.5 text-[#3C311F]" />
+                  Sync to Other Platform
+                </button>
+
+                <button
+                  onClick={handleSubmitQueue}
+                  disabled={
+                    isSubmitting ||
+                    !text.trim() ||
+                    reviewResult?.issues?.some(
+                      (i) => (i.guidelineRef === 'RULE-CLAIM-EXCESS' || (i.category === 'claims' && i.severity === 'critical')) && i.status !== 'accepted'
+                    )
+                  }
+                  className="px-4 py-2 rounded-xl font-semibold text-xs bg-emerald-700 hover:bg-emerald-800 disabled:bg-sand-300 disabled:cursor-not-allowed text-white flex items-center gap-1.5 shadow-xs transition-colors"
+                  title={
+                    reviewResult?.issues?.some(
+                      (i) => (i.guidelineRef === 'RULE-CLAIM-EXCESS' || (i.category === 'claims' && i.severity === 'critical')) && i.status !== 'accepted'
+                    )
+                      ? 'Blocked: Content contains excess unauthorized claims exceeding admin certified claim points.'
+                      : 'Submit content to workflow queue'
+                  }
+                >
+                  <Send className="h-3.5 w-3.5" />
+                  Submit to Queue
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -886,6 +910,28 @@ export const ReviewEngine: React.FC<ReviewEngineProps> = ({
           />
         </div>
       )}
+
+      {/* Workflow Automation Sync Modal */}
+      <WorkflowSyncPanel
+        title={title.trim() || 'Document Content Draft'}
+        content={text}
+        imageUrl={selectedImage || undefined}
+        contentType={selectedImage ? 'image' : 'document'}
+        isModal={true}
+        isOpen={isSyncModalOpen}
+        onClose={() => setIsSyncModalOpen(false)}
+        onSaveLocally={() => {
+          setSuccessToast(`Draft "${title.trim() || 'Document'}" saved locally.`);
+        }}
+        onSyncSuccess={(platforms) => {
+          onLogAudit(
+            'Workflow Synced',
+            `Synced content "${title || 'Draft'}" to ${platforms.join(', ')} via workflow automation webhook.`,
+            'workflow'
+          );
+          setSuccessToast(`Successfully synced to ${platforms.join(', ')}!`);
+        }}
+      />
     </div>
   );
 };

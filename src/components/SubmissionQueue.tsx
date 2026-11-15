@@ -21,7 +21,9 @@ import {
   ChevronRight,
   Send,
   History,
+  Share2,
 } from 'lucide-react';
+import { WorkflowSyncPanel } from './WorkflowSyncPanel';
 
 interface SubmissionQueueProps {
   submissions: ContentSubmission[];
@@ -45,6 +47,7 @@ export const SubmissionQueue: React.FC<SubmissionQueueProps> = ({
   // Signature modal state
   const [showSignModal, setShowSignModal] = useState(false);
   const [signRemarks, setSignRemarks] = useState('Reviewed and approved for production syndication.');
+  const [isSyncModalOpen, setIsSyncModalOpen] = useState(false);
 
   const filtered = submissions.filter((sub) => {
     const matchesStatus = filterStatus === 'all' || sub.status === filterStatus;
@@ -330,12 +333,23 @@ export const SubmissionQueue: React.FC<SubmissionQueueProps> = ({
                 </h3>
               </div>
 
-              <button
-                onClick={() => setSelectedSub(null)}
-                className="text-xs text-sand-400 hover:text-sand-700 font-bold"
-              >
-                Close
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setIsSyncModalOpen(true)}
+                  className="px-3 py-1.5 rounded-lg bg-sand-100 hover:bg-sand-200 border border-sand-300 text-sand-900 text-xs font-semibold flex items-center gap-1.5 shadow-2xs transition-colors"
+                  title="Publish & Sync this submission to external workflow platforms (Canva, GitHub, Teams, etc.)"
+                >
+                  <Share2 className="h-3.5 w-3.5 text-[#3C311F]" />
+                  Sync to Other Platform
+                </button>
+                <button
+                  onClick={() => setSelectedSub(null)}
+                  className="text-xs text-sand-400 hover:text-sand-700 font-bold px-1"
+                >
+                  Close
+                </button>
+              </div>
             </div>
 
             {/* Cryptographic Sign-Off Banner if Approved */}
@@ -525,6 +539,32 @@ export const SubmissionQueue: React.FC<SubmissionQueueProps> = ({
             </div>
           </div>
         </div>
+      )}
+
+      {/* Workflow Automation Sync Modal */}
+      {selectedSub && (
+        <WorkflowSyncPanel
+          title={selectedSub.title}
+          content={selectedSub.currentText}
+          contentType={selectedSub.format}
+          isModal={true}
+          isOpen={isSyncModalOpen}
+          onClose={() => setIsSyncModalOpen(false)}
+          onSaveLocally={() => {
+            onLogAudit(
+              'Submission Saved',
+              `Saved "${selectedSub.title}" locally before workflow sync.`,
+              'workflow'
+            );
+          }}
+          onSyncSuccess={(platforms) => {
+            onLogAudit(
+              'Workflow Synced',
+              `Synced submission "${selectedSub.title}" to ${platforms.join(', ')} via workflow automation webhook.`,
+              'workflow'
+            );
+          }}
+        />
       )}
     </div>
   );

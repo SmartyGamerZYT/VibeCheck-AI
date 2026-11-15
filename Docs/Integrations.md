@@ -57,6 +57,7 @@ flowchart TD
 | **Microsoft Teams** | Webhook | Outbound | Critical claim flagged, manager ping | HTTPS Connector URL |
 | **GitHub Actions** | REST / CI | Inbound | `pull_request` on `.md` or `.tsx` copy | GitHub App Token |
 | **Figma API** | REST API | Inbound | Brand token synchronization | Personal Access Token |
+| **n8n / Make Webhook** | HTTPS POST | Outbound | Save & Sync to Platforms trigger | Bearer WORKFLOW_SECRET_KEY |
 
 ---
 
